@@ -1,5 +1,5 @@
-# HCGGenerator
-A Hierarchical Call Graph Generator for Multi Languages
+# ContextGenerator
+A context generator for code review
 
 ## Run
 

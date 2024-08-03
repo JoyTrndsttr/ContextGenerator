@@ -17,7 +17,7 @@ db_config = {
 }
 
 # GitHub 个人访问令牌
-GITHUB_TOKEN = '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'
+GITHUB_TOKEN = ''
 
 # 最大查找 parent commit 的次数
 MAX_PARENT_SEARCH = 100

@@ -16,8 +16,15 @@ def find_definition(source_code, file_path, cursor, repo_name):
 
     if definitions:
         definition  = definitions[0] #取第一个定义
+        #处理param 'self'
+        if definitions[0].name == 'self':
+            self_definitions = script.goto(cursor[0]+1, cursor[1]+5)
+            if not self_definitions:
+                print(f'no self_definition found in {file_path} at ({definitions[0].line+1},{definitions[0].column+1})')
+                return '', '', ''
+            definition = self_definitions[0]
         #避免找到的是当前文件中的import定义
-        if definitions[0].module_path._str == file_path :
+        elif definitions[0].module_path._str == file_path :
             def_definitions = script.goto(definitions[0].line,definitions[0].column)
             if not def_definitions:
                 print(f'no def_definition found in {file_path} at ({definitions[0].line+1},{definitions[0].column+1})')

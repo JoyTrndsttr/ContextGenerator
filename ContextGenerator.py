@@ -30,6 +30,12 @@ def main():
         print(f'processing: {id}')
         getProjectCommitState.main(id)
         getContext.main(id)
+    
+
+    # id = 12323
+    # print(f'processing: {id}')
+    # getProjectCommitState.main(id)
+    # getContext.main(id)
 
 if __name__ == "__main__":
     main()

@@ -144,4 +144,4 @@ def main(id):
         store_context(record_id, json.dumps(context))
 
 if __name__ == "__main__":
-    main()
+    main(6730)

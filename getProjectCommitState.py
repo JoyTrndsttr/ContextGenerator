@@ -67,39 +67,57 @@ def get_commit_info(repo, commit_sha):
     return response.json()
 
 # 应用文件的补丁
-def apply_patch(patch, file_path):
-    # 检查文件是否存在，不存在则创建
-    dir_name = os.path.dirname(file_path)
-    if not os.path.exists(dir_name):
-        os.makedirs(dir_name)
+def apply_patch(repo_path, file_info):
+    patch = file_info['patch']
+    file_path = os.path.join(repo_path, file_info['filename'])
+    status = file_info['status']
 
-    if not os.path.exists(file_path):
+    def mkDir():
+        dir_name = os.path.dirname(file_path)
+        if not os.path.exists(dir_name):
+            os.makedirs(dir_name)
+    def touchFile():
+        if not os.path.exists(file_path):
+            with open(file_path, 'w', encoding='utf-8') as file:
+                file.write('')
+    def delFile():
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    def patchApply():
+        with open(file_path, 'r', encoding='utf-8') as file:
+            file_content = file.readlines()
+        start_line = None
+        line_change = 0 #补丁所在行修正
+        for line in patch.split('\n'):# 解析补丁并应用到文件
+            if line.startswith('@@'):
+                start_line = int(line.split()[1].split(',')[0][1:]) - 2 + line_change
+                if start_line == -2 : start_line = -1 #修正@@号初始值为0带来的影响
+            elif line.startswith('+') and start_line is not None:
+                file_content.insert(start_line, line[1:] + '\n')
+                line_change += 1
+            elif line.startswith('-') and start_line is not None:
+                if start_line < len(file_content):
+                    del file_content[start_line]
+                    line_change -= 1
+                    start_line -= 1
+                else:
+                    print(f"Warning: Trying to delete line {start_line} which is out of range in {file_path}")
+            start_line += 1
         with open(file_path, 'w', encoding='utf-8') as file:
-            file.write('')
+            file.writelines(file_content)
 
-    with open(file_path, 'r', encoding='utf-8') as file:
-        file_content = file.readlines()
-    
-    start_line = None
-    line_change = 0 #补丁所在行修正
-    # 解析补丁并应用到文件
-    for line in patch.split('\n'):
-        if line.startswith('@@'):
-            start_line = int(line.split()[1].split(',')[0][1:]) - 2 + line_change
-        elif line.startswith('+') and start_line is not None:
-            file_content.insert(start_line, line[1:] + '\n')
-            line_change += 1
-        elif line.startswith('-') and start_line is not None:
-            if start_line < len(file_content):
-                del file_content[start_line]
-                line_change -= 1
-                start_line -= 1
-            else:
-                print(f"Warning: Trying to delete line {start_line} which is out of range in {file_path}")
-        start_line += 1
-    
-    with open(file_path, 'w', encoding='utf-8') as file:
-        file.writelines(file_content)
+    if status == 'renamed' :
+        pre_file_path = os.path.join(repo_path, file_info['previous_filename'])
+        os.rename(pre_file_path, file_path)
+        patchApply()
+    elif status == 'added' :
+        mkDir()
+        touchFile()
+        patchApply()
+    elif status == 'deleted' :
+        delFile()
+    else:
+        patchApply()
 
 # 存储commit信息
 def store_commit_details(repo, commit_sha):
@@ -138,6 +156,8 @@ def restore_to_commit(repo, repo_path, target_commit):
         try:
             subprocess.run(["git", "checkout", current_commit, "-f"], cwd=repo_path, check=True)
             print(f"Successfully checked out to commit {current_commit}")
+            subprocess.run(["git", "clean", "-fdx"], cwd=repo_path, check=True)
+            print(f"Untracked files and dirs cleaned")
             successful_checkout = True
             break
         except subprocess.CalledProcessError:
@@ -174,10 +194,8 @@ def main(id):
                 files = commit_info.get('files', [])
                 for file_info in files:
                     if 'patch' in file_info:
-                        patch = file_info['patch']
-                        file_path = os.path.join(repo_path, file_info['filename'])
-                        apply_patch(patch, file_path)
-                        print(f"Applied patch for {file_info['filename']}")
+                        apply_patch(repo_path, file_info)
+                        print(f"Applied patch for {file_info['filename']} commit_info:{commit_info['sha']}")
             store_commit_details(repo, commit_hash)
             success_count += 1
         else:

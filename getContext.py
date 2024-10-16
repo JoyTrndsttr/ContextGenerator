@@ -57,14 +57,7 @@ def parse_file(file_path, parser):
 def get_db_info(id):
     conn = psycopg2.connect(**db_config)
     cursor = conn.cursor()
-    cursor.execute("SELECT id, repo, path, code_diff FROM cacr WHERE id = %s", [id])
-    # cursor.execute("SELECT id, repo, path, code_diff FROM cacr WHERE repo = 'spotify/luigi'")
-    # while True:
-    #     record = cursor.fetchone()
-    #     if record is None:
-    #         break
-    #     yield record
-    # cursor.execute("SELECT id, repo, path, code_diff FROM cacr WHERE id = 561")
+    cursor.execute("SELECT _id, repo, path, code_diff FROM cacr_py WHERE _id = %s", [id])
     record = cursor.fetchone()
     conn.close()
     return record
@@ -99,9 +92,9 @@ def store_context(record_id, context):
     conn = psycopg2.connect(**db_config)
     cursor = conn.cursor()
     cursor.execute("""
-        UPDATE cacr
+        UPDATE cacr_py
         SET context = %s
-        WHERE id = %s;
+        WHERE _id = %s;
     """, (context, record_id))
     conn.commit()
     cursor.close()
@@ -111,7 +104,7 @@ def store_context(record_id, context):
 def main(id):
     # 设置项目路径
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    repo_base_path = os.path.join(script_dir, 'repo')
+    repo_base_path = os.path.join(script_dir, 'dataset\\repo')
     output_path = os.path.join(script_dir, 'context.json')
 
     # 加载所有语言解析器

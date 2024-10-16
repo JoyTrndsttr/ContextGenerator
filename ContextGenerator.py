@@ -31,7 +31,7 @@ def get_db_info():
 def main():
     for record in get_db_info():
         id = record[0]
-        if id < 9408 : continue
+        if id > 9408 : continue
         print(f'processing: {id}')
         try:
             successful_checkout = getProjectCommitState.main(id)

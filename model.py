@@ -1,5 +1,6 @@
 # 数据库连接配置
 import psycopg2
+import json
 from openai import OpenAI
 
 db_config = {
@@ -128,7 +129,7 @@ def generate_new_prompt5(old_without_minus, review):
 
 def get_chatgptapi_response(prompt,temperature=1.0):
     client = OpenAI(
-        api_key = "" # your api key
+        api_key = json.load(open("settings.jsonl", encoding='utf-8'))["api_key"]
     )
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",  # 确保使用正确的模型名称

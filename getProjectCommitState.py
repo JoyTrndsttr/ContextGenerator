@@ -17,7 +17,7 @@ db_config = {
 }
 
 # GitHub 个人访问令牌
-GITHUB_TOKEN = ''
+GITHUB_TOKEN = json.load(open("settings.jsonl", encoding='utf-8'))["GITHUB_TOKEN"]
 
 # 最大查找 parent commit 的次数
 MAX_PARENT_SEARCH = 100

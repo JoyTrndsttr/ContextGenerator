@@ -5,3 +5,4 @@ debug.log
 /__pycache__
 /ContextGenerators/__pycache__
 /dataset/repo
+settings.jsonl

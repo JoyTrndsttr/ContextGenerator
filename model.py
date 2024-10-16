@@ -128,7 +128,7 @@ def generate_new_prompt5(old_without_minus, review):
 
 def get_chatgptapi_response(prompt,temperature=1.0):
     client = OpenAI(
-        api_key = "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" # your api key
+        api_key = "" # your api key
     )
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",  # 确保使用正确的模型名称

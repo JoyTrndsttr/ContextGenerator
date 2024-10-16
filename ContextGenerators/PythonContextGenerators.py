@@ -34,13 +34,13 @@ def find_definition(source_code, file_path, cursor, repo_name):
                     file_source_code = f.read().split('\n')
                     start = definition.line - 1
                     end  = start + 1
-                    while end<len(file_source_code)-2 and not file_source_code[end].startswith('    def') and (file_source_code[end].startswith(' ') or file_source_code[end]==''):
+                    while end<len(file_source_code)-2 and not file_source_code[end].startswith('    def') and file_source_code[end].startswith(' ') or file_source_code[end]=='':
                         end += 1
                     for i in range(start, end):
                         context.append(file_source_code[i])
             except FileNotFoundError:
                 print(f"FileNotFoundError: {definition.module_path_str}")
-
+            
             return module_path, _type, '\n'.join(context)
     return '','',''
     # if definitions:
@@ -126,7 +126,6 @@ def getContext(tree, source_code, file_path, path, code_diff, repo_name):
         "Functions": {},
         "Classes": {}
     }
-    _context_ = {} #只包含函数信息的_context
 
     path = re.sub('/','.',path.split('.')[0])
     class_name = 'undefined'
@@ -154,9 +153,6 @@ def getContext(tree, source_code, file_path, path, code_diff, repo_name):
         line_content = line
         if line.startswith('+') or line.startswith('-'):
             line_content = line[1:] #去符号
-
-        if line.startswith('+'):
-            continue #用于代码细化任务
         
         if line_content.startswith(' def '):
             func_name = line_content.split('(')[0].split(' ')[-1]
@@ -215,7 +211,6 @@ def getContext(tree, source_code, file_path, path, code_diff, repo_name):
                         call_context_list.append(call_context)
                         call_name_list.add(call_name)
         _context['Functions'][f'{function_name}'] = call_context_list
-        _context_[f'{function_name}'] = call_context_list
 
     # for function_name in context['Classes']:
     #     call_context_list = []
@@ -243,4 +238,4 @@ def getContext(tree, source_code, file_path, path, code_diff, repo_name):
 
     for _import in context['Imports']:
         _context['Imports'].append(_import)
-    return _context_
+    return _context

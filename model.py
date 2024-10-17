@@ -2,6 +2,7 @@
 import psycopg2
 import json
 from openai import OpenAI
+import re
 
 db_config = {
     'dbname': 'HCGGraph',
@@ -11,13 +12,30 @@ db_config = {
     'port': '5432'
 }
 
+def get_context_prompt():
+    sample_context = {"a.b.py":{"c.d":[{"Call_name": "e","Call_path": "f.g","Call_text": "g","Call_type": "h"}]}}
+    context_prompt = "Consider a context:" + json.dumps(sample_context)
+    context_prompt += "It indicates that under the path a.b.py file, there is a function c.d() that calls e of type h. The specific <h> content of e is g."
+    return context_prompt
+
 def get_db_info(id):
     conn = psycopg2.connect(**db_config)
     cursor = conn.cursor()
-    cursor.execute("SELECT id, repo, commit_hash, pr_id, review, path, code_diff, context FROM cacr WHERE id = %s;", [id])
+    cursor.execute("SELECT _id, old, new, code_diff, context FROM cacr_py WHERE _id = %s;", [id])
     record = cursor.fetchone()
     conn.close()
     return record
+
+def get_few_shot_prompt():
+    prompt = "There is a example about the format of the revised code:"
+    old_code_string = "         self.db = db\n         self.db_ledger = DBLedgerActions(self.db, self.db.msg_aggregator)\n    def _consume_cointracking_entry(\n        self,\n        csv_row: Dict[str, Any],\n        extra_parameters: Dict[str, Any],\n    ) -> None\n         \"\"\"Consumes a cointracking entry row from the CSV and adds it into the database\n         Can raise:\n             - DeserializationError if something is wrong with the format of the expected values"
+    new_code_string = "         self.db = db\n         self.db_ledger = DBLedgerActions(self.db, self.db.msg_aggregator)\n    def _consume_cointracking_entry(self, csv_row: Dict[str, Any], **kwargs: Any) -> None:\n         \"\"\"Consumes a cointracking entry row from the CSV and adds it into the database\n         Can raise:\n             - DeserializationError if something is wrong with the format of the expected values"
+    review_string   = "Okay so both here and in all other import functions, why add an `extra_parameters` dict that's making things more confusing and is not typed by mypy? You added it to **all** import functions. Just add another argument called `timestamp_format`"
+    prompt += f"Given old code:{old_code_string}"
+    prompt += f"Given review:{review_string}"
+    prompt += "Here we omit the context"
+    prompt += f"Your revised code should follow the format of old code which is:{new_code_string}"
+    return prompt
 
 # def few_shot_prompt(sample=[1585,6248,6396]):
 #     prompt = "There are samples about code_diff to review:\n"
@@ -44,8 +62,7 @@ def get_db_info(id):
 #     return prompt
 
 
-
-def generate_new_prompt1(old_without_minus, review):
+def generate_new_prompt1(old_without_minus, review, context):
     '''
      the simplest prompt
     '''
@@ -54,9 +71,11 @@ def generate_new_prompt1(old_without_minus, review):
     prompt += "```\n{}\n```\n".format(old_without_minus)
     prompt += "code review:\n"
     prompt += review
+    prompt += "Given context:"
+    prompt += context
     prompt += "\nPlease generate the revised code according to the review"
     return prompt
-def generate_new_prompt2(old_without_minus, review):
+def generate_new_prompt2(old_without_minus, review, context):
     '''
     P1 + Scenario Description.
     '''
@@ -67,27 +86,33 @@ def generate_new_prompt2(old_without_minus, review):
     prompt += "```\n{}\n```\n".format(old_without_minus)
     prompt += "There is the code review for this code:\n"
     prompt += review
+    prompt += "There is context about function call:"
+    prompt += context
     prompt += "\nPlease generate the revised code according to the review"
     return prompt
-def generate_new_prompt3(old_without_minus, review):
+def generate_new_prompt3(old_without_minus, review, context):
     '''
     P1 + Detailed Requirements.
     '''
     prompt = ""
-    prompt += "You will be provided with a partial code snippet and a code review message" \
-              " for the given code. Your task is to generate a revised code snippet based" \
+    prompt += "You will be provided with a partial code snippet,a code review message for" \
+              "the given code and the context about the function call details of the" \
+              " code snippet. Your task is to generate a revised code snippet based" \
               " on the review message and the provided code. However, you should not complete" \
               " the partial code. Your output should consist of changes, modifications," \
               " deletions or additions to the provided code snippet that address the issues" \
               " raised in the code review. Note that you are not required to write new code" \
-              " from scratch, but rather revise and improve the given code.\n" \
-              "Provided partial code:\n"
-    prompt += "```\n{}\n```\n".format(old_without_minus)
+              " from scratch, but rather revise and improve the given code.\n"
+    prompt += get_few_shot_prompt()
+    prompt += "Provided partial code:\n```\n{}\n```\n".format(old_without_minus)
     prompt += "Code review:\n"
     prompt += review
+    prompt += get_context_prompt()
+    prompt += "There is context about the function call:"
+    prompt += context
     prompt += "\nPlease generate the revised code."
     return prompt
-def generate_new_prompt4(old_without_minus, review):
+def generate_new_prompt4(old_without_minus, review, context):
     '''
     P1 + Concise Requirements.
     '''
@@ -100,7 +125,7 @@ def generate_new_prompt4(old_without_minus, review):
               "Please ensure that the revised code follows the original code format" \
               " and comments, unless it is explicitly required by the review."
     return prompt
-def generate_new_prompt5(old_without_minus, review):
+def generate_new_prompt5(old_without_minus, review, context):
     '''
     P4 + Scenario Description.
     '''
@@ -134,7 +159,7 @@ def get_chatgptapi_response(prompt,temperature=1.0):
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",  # 确保使用正确的模型名称
         messages=[
-            {"role": "system", "content": "You are an experienced reviewer reviewing code changes."},
+            {"role": "system", "content": "You are an experienced developer."},
             {"role": "user", "content": prompt}
         ],
         temperature=temperature
@@ -142,14 +167,26 @@ def get_chatgptapi_response(prompt,temperature=1.0):
     # print(response)
     answer = response.choices[0].message.content
     print("answer: ",answer)
+    result = re.search(r'```(.*)```', answer,re.DOTALL)
+    # print("result: ",result)
+    if result:
+        newcode = result.group(1)
+        print(newcode)
     return ""
 
 def main(id):
     record = get_db_info(id)
     if record:
-        record_id, repo, commit_hash, pr_id, review ,path, code_diff, context = record
-        prompt = generate_review_prompt(code_diff, context)
+        _id, old, new, code_diff, context = record
+        old_without_minus = [] #去除减号
+        for line in old.split("\n"):
+            if line.startswith('-'):
+                old_without_minus.append(line[1:])
+            else:
+                old_without_minus.append(line)
+        old_without_minus = "\n".join(old_without_minus)
+        prompt = generate_new_prompt3(old_without_minus, code_diff, context)
         get_chatgptapi_response(prompt)
 
 if __name__ == "__main__":
-    main(10231)
+    main(1664)

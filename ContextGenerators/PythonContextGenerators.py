@@ -4,6 +4,9 @@ import json
 
 #在项目中寻找模块的定义并输出上下文
 def find_definition(source_code, file_path, cursor, repo_name):
+    def count_indent(s):#计算字符串的缩进的空格数
+        return len(s) - len(s.lstrip(' '))
+
     script = jedi.Script(source_code, path=file_path)
     context = []
     definition = {}
@@ -34,7 +37,7 @@ def find_definition(source_code, file_path, cursor, repo_name):
                     file_source_code = f.read().split('\n')
                     start = definition.line - 1
                     end  = start + 1
-                    while end<len(file_source_code)-2 and not file_source_code[end].startswith('    def') and (file_source_code[end].startswith(' ') or file_source_code[end]==''):
+                    while end<len(file_source_code)-2 and not (count_indent(file_source_code[start])==count_indent(file_source_code[end]) and not file_source_code[end]==''):
                         end += 1
                     for i in range(start, end):
                         context.append(file_source_code[i])
@@ -83,18 +86,19 @@ def find_call_node(node):
     return call_node_list
 
 #找到最近的上层定义
-def find_recent_class(file_path, line):
+def find_recent_def(file_path, line):
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             file_source_code = f.read().split('\n')
             line -= 1
             while line > 0 and (file_source_code[line].startswith(' ') or file_source_code[line].startswith('')):
-                if file_source_code[line].startswith('def') or file_source_code[line].startswith('class'):
-                    return file_source_code[line].split(' ')[1].split('(')[0]
+                if file_source_code[line].startswith('def') or file_source_code[line].startswith('    def'):
+                # if file_source_code[line].startswith('def') or file_source_code[line].startswith('class'):
+                    return file_source_code[line].split('def ')[1].split('(')[0]
                 line -= 1
     except FileNotFoundError:
         print(f"FileNotFoundError: {file_path}")
-    return 'default_super_class_or_def'
+    return 'default_def'
 
 #计算所有调用点的游标
 def calculate_cursor_positions(start_cursor, call_text):
@@ -133,11 +137,13 @@ def getContext(tree, source_code, file_path, path, code_diff, repo_name):
 
     #对出现代码改动的地方，寻找涉及的函数或者import信息，@@行提到的函数或类也算进去
     current_line  = -1
-    current_super_class_or_def = 'default_class'
+    current_super_class_or_def = 'default_def'
     for line in code_diff.split('\n'):
         if line.startswith('@@'):
             current_line = int(line.split('-')[1].split(',')[0])
-            current_super_class_or_def = find_recent_class(file_path, current_line)
+            current_super_class_or_def = find_recent_def(file_path, current_line)
+            if not current_super_class_or_def == 'default_def':
+                context["Functions"].add(f"{current_super_class_or_def}")
             #'@@'一行中出现的函数或类有很多情况和代码变更是不相关的，只是恰好为代码变更函数的上一个函数
             # hunk_function = line.split('def ')
             # if(len(hunk_function) > 1):

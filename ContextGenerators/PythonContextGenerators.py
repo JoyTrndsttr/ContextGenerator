@@ -92,7 +92,7 @@ def find_recent_def(file_path, line):
             file_source_code = f.read().split('\n')
             line -= 1
             while line > 0 and (file_source_code[line].startswith(' ') or file_source_code[line].startswith('')):
-                if file_source_code[line].startswith('def') or file_source_code[line].startswith('    def'):
+                if file_source_code[line].startswith('def ') or file_source_code[line].startswith('    def '):
                 # if file_source_code[line].startswith('def') or file_source_code[line].startswith('class'):
                     return file_source_code[line].split('def ')[1].split('(')[0]
                 line -= 1
@@ -140,7 +140,9 @@ def getContext(tree, source_code, file_path, path, code_diff, repo_name):
     current_super_class_or_def = 'default_def'
     for line in code_diff.split('\n'):
         if line.startswith('@@'):
-            current_line = int(line.split('-')[1].split(',')[0])
+            if not str.isdigit(line.split('-')[1].split(',')[0]): #处理如@@ -1 +0,0 @@的情况
+                current_line = int(line.split('-')[1].split(' ')[0])
+            else: current_line = int(line.split('-')[1].split(',')[0])
             current_super_class_or_def = find_recent_def(file_path, current_line)
             if not current_super_class_or_def == 'default_def':
                 context["Functions"].add(f"{current_super_class_or_def}")
@@ -210,7 +212,11 @@ def getContext(tree, source_code, file_path, path, code_diff, repo_name):
                 for call in call_list:
                     call_context = {}
                     call_name,cursor = call
-                    module_path, _type, text = find_definition(source_code, file_path, cursor, repo_name)
+                    try:
+                        module_path, _type, text = find_definition(source_code, file_path, cursor, repo_name)
+                    except Exception as e:
+                        print(f"Error find definition {call_name} in {file_path}:{e}")
+                        continue
                     if not text:
                         continue
                     call_context['Call_name'] = call_name

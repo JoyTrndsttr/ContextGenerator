@@ -99,6 +99,7 @@ def store_context(record_id, context):
     conn.commit()
     cursor.close()
     conn.close()
+    print(f"Successfully store context of _id:{record_id}")
 
 # 主函数
 def main(id):

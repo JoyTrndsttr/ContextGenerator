@@ -120,6 +120,7 @@ def apply_patch(repo_path, file_info):
     if status == 'renamed' :
         pre_file_path = os.path.join(repo_path, file_info['previous_filename'])
         mkDir()
+        delFile() #防止开发者采用覆盖的方式移动文件
         os.rename(pre_file_path, file_path)
         patchApply()
     elif status == 'added' :

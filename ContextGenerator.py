@@ -3,9 +3,10 @@ from psycopg2 import sql
 import getContext
 import getProjectCommitState
 import logging
+import ErrorProcess
 
 # Setting up logging
-logging.basicConfig(filename='log.txt', level=logging.ERROR, format='%(asctime)s:%(levelname)s:%(message)s')
+# logging.basicConfig(filename='log.txt', level=logging.ERROR, format='%(asctime)s:%(levelname)s:%(message)s')
 
 # 数据库连接配置
 db_config = {
@@ -29,24 +30,37 @@ def get_db_info():
 
 # 主函数
 def main():
-    for record in get_db_info():
-        id = record[0]
-        if id > 9408 : continue
+    ids = ErrorProcess.error_ids2
+    for id in ids:
+    # for record in get_db_info():
+    #     id = record[0]
+        # if id < 2540 : continue
         print(f'processing: {id}')
-        try:
-            successful_checkout = getProjectCommitState.main(id)
-            if successful_checkout:
-                getContext.main(id)
-        except Exception as e:
-            print(f'Error processing ID {id}: {e}')
-            logging.error(f'Error processing ID {id}: {e}', exc_info=True)  # Log error with stack trace
+        attempt = 0
+        while attempt < 3:
+            try:
+                successful_checkout = getProjectCommitState.main(id)
+                if successful_checkout:
+                    getContext.main(id)
+                break
+            except Exception as e:
+                attempt += 1
+                print(f'Error processing ID {id}: {e}')
+                if attempt ==3:
+                    logging.error(f'Error processing ID {id}: {e}', exc_info=True)  # Log error with stack trace
     
 
-    # id = 408
+    
+    # id = 1408
     # print(f'processing: {id}')
     # successful_checkout = getProjectCommitState.main(id)
     # if successful_checkout:
     #     getContext.main(id)
-
+    # # try:
+    # #     successful_checkout = getProjectCommitState.main(id)
+    # #     if successful_checkout:
+    # #         getContext.main(id)
+    # # except Exception as e:
+    # #     print(f'Error processing ID {id}: {e}')
 if __name__ == "__main__":
     main()

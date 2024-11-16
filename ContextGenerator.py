@@ -41,7 +41,7 @@ def main():
             try:
                 successful_checkout = getProjectCommitState.main(id)
                 if successful_checkout:
-                    getContext.main(id)
+                    getContext.main(id) 
                 break
             except Exception as e:
                 attempt += 1

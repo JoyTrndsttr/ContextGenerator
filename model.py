@@ -30,15 +30,15 @@ logging.basicConfig(filename='log.txt', level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s', filemode='w')
 
 def get_context_explanation():
-    sample_context = {"a.b.py":{"c.d":[{"Call_name": "e","Call_path": "f.g","Call_text": "g","Call_type": "h"}]}}
+    sample_context = [{"Call_name": "func1","Call_path": "<path_to_func1>.func1","Call_text": "<func_content>","Call_type": "<type>"}]
     context_prompt = "\nConsider a context:" + json.dumps(sample_context)
-    context_prompt += "It indicates that under the path a.b.py, there is a function c.d() that calls e of type h. The specific <h> content of e is g.\n"
+    context_prompt += "It indicates that <path_to_func1>.func1 was called , which is of type <type>, with specific content <func_content>\n"
     return context_prompt
 
 def get_db_ids():
     conn = psycopg2.connect(**db_config)
     cursor = conn.cursor()
-    cursor.execute("SELECT _id from cacr_py order by _id ASC")
+    cursor.execute("SELECT _id from cacr_py where context is not null order by _id ASC")
     while True:
         record = cursor.fetchone()
         if record is None:
@@ -169,10 +169,13 @@ def generate_new_prompt4(old_without_minus, review, context):
     prompt += "```\n{}\n```\n".format(old_without_minus)
     prompt += "There is the code review for this code:\n"
     prompt += review
-    prompt += get_context_explanation()
-    prompt += "There is context about function call:"
-    prompt += context
-    prompt += "\nPlease generate the revised code according to the review"
+    # prompt += get_context_explanation()
+    if len(context) > 0:
+        prompt += "Based on the review,we provide the following context about function code:"
+        prompt += context
+    prompt += "\nPlease generate the revised code according to the review. " \
+              "Please ensure that the revised code follows the original code format" \
+              " and comments, unless it is explicitly required by the review."
     return prompt
 def generate_new_prompt5(old_without_minus, review, context):
     '''
@@ -207,15 +210,47 @@ def generate_new_prompt5_CRN(old_without_minus, review, context):
               " and comments, unless it is explicitly required by the review."
     return prompt
 
+def genereate_context_prompt(old_without_minus, review):
+
+    prompt = "As a developer, your pull request receives a reviewer's comment on " \
+              "a specific piece of code that requires a change.In order to make " \
+              "changes based on the review,you need to refer back to the original code. " \
+              "You should provide the code implementation of which function you'd most "\
+              "like to refer to.\n"
+    prompt += "The old code being referred to in the hunk of code changes is:\n"
+    prompt += "```\n{}\n```\n".format(old_without_minus)
+    prompt += "The code review for this code is:\n"
+    prompt += review
+    prompt += "\nPlease provide the function name, class name or variable name " \
+              "you'd like to refer to which have appeared in the old code." \
+              "Your output is formatted as a json object formatted as follows:\n" \
+              "{'function_name':'<function_name>','reason':'<your reason for choosing this function>'}"
+    return prompt
+
+def generate_instruction(review, context):
+    '''
+    P1 + Scenario Description.
+    '''
+    prompt = ""
+    prompt += "As a developer, imagine you've submitted a pull request and" \
+              " your team leader requests you to make a change to a piece of code."
+    prompt += "There is the code review for this code:\n"
+    prompt += review
+    prompt += "\nThere is context about function call:"
+    prompt += context
+    prompt += "\nPlease generate the revised code according to the review." \
+              "Input is the old code being referred to in the hunk of code changes:\n"
+    return prompt
+
 def get_model_response(prompt,temperature=1.0):
     answer = model.get_completion([prompt])
-    print("answer: ",answer)
+    # print("answer: ",answer)
     result = re.search(r'```(.*)```', answer,re.DOTALL)
     # print("result: ",result)
     if result: # TODO 由于模型可能会受到提示词的干扰，应该选表现最好的newcode
         newcode = result.group(1)
         print(newcode)
-    return newcode, answer
+    return newcode if result else "", answer
 
 def store_result(_id, em, em_trim, bleu, bleu_trim, type):
     conn = psycopg2.connect(**db_config)
@@ -272,6 +307,7 @@ def main(id):
     if record:
         _id, old, new, review, context = record
         context = json.dumps(get_concise_context(old, context))
+
         old_without_minus = [] #去除减号
         for line in old.split("\n"):
             if line.startswith('-'):
@@ -279,33 +315,292 @@ def main(id):
             else:
                 old_without_minus.append(line)
         old_without_minus = "\n".join(old_without_minus)
-        prompt1 = generate_new_prompt5(old_without_minus, review, context)
-        evaluate(id, prompt1, new, "CACR")
-        prompt2 = generate_new_prompt5_CRN(old_without_minus, review, context)
-        evaluate(id, prompt2, new, "CRN")
         
+        new_without_plus = [] #加号换成空格
+        for line in new.split("\n"):
+            if line.startswith('+'):
+                new_without_plus.append(" "+line[1:])
+            else:
+                new_without_plus.append(line)
+        new_without_plus = "\n".join(new_without_plus)
+        
+        prompt_for_get_function_name = genereate_context_prompt(old_without_minus, review)
+        newcode, result = get_model_response(prompt_for_get_function_name)
+
+        try:
+            funcName_for_research = json.loads(newcode)["function_name"]
+        except Exception as e:
+            print(e)
+            funcName_for_research = ""
+        print(f"funcName_for_research: {funcName_for_research}")
+        print(result)
+
+        concise_context = []
+        if not funcName_for_research=="":
+            _context = json.loads(context)
+            for item in _context:
+                if re.search(funcName_for_research, item["Call_name"]):
+                    concise_context.append(item)
+        
+        best_llama_em, best_llama_em_trim, best_llama_bleu, best_llama_bleu_trim, best_llama_newcode = 0, 0, 0, 0, ""
+        i = 0
+        while i < 2:
+            i += 1
+            prompt4 = generate_new_prompt4(old_without_minus, review, json.dumps(concise_context))
+            llama_newcode, llama_result = get_model_response(prompt4)
+            llama_em, llama_em_trim, _, _, llama_bleu, llama_bleu_trim \
+                = myeval(new_without_plus, llama_newcode)
+            if llama_bleu_trim > best_llama_bleu_trim:
+                best_llama_em, best_llama_em_trim, best_llama_bleu, best_llama_bleu_trim, best_llama_newcode = llama_em, llama_em_trim, llama_bleu, llama_bleu_trim, llama_newcode
+
+        best_crn_em, best_crn_em_trim, best_crn_bleu, best_crn_bleu_trim = 0, 0, 0, 0
+        i = 0
+        while i < 2:
+            i += 1
+            prompt_CRN = generate_new_prompt5_CRN(old_without_minus, review, context)
+            crn_newcode, crn_result = get_model_response(prompt_CRN)
+            crn_em, crn_em_trim, _, _, crn_bleu, crn_bleu_trim \
+                = myeval(new_without_plus, crn_newcode)
+            if crn_bleu_trim > best_crn_bleu_trim:
+                best_crn_em, best_crn_em_trim, best_crn_bleu, best_crn_bleu_trim = crn_em, crn_em_trim, crn_bleu, crn_bleu_trim
+        
+        data = {}
+        data["id"] = _id
+        data["old_code"] = old_without_minus
+        data["new_code"] = new_without_plus
+        data["code_review"] = review
+        data["context"] = context
+        data["prompt_for_get_function_name"] = prompt_for_get_function_name
+        data["output_for_get_context_info"] = result
+        data["funcName_for_research"] = funcName_for_research
+        data["concise_context"] = concise_context
+        data["prompt4"] = prompt4
+        data["llama_newcode"] = best_llama_newcode
+        data["llama_em"] = best_llama_em
+        data["llama_em_trim"] = best_llama_em_trim
+        data["llama_bleu"] = best_llama_bleu
+        data["llama_bleu_trim"] = best_llama_bleu_trim
+        data["crn_em"] = best_crn_em
+        data["crn_em_trim"] = best_crn_em_trim
+        data["crn_bleu"] = best_crn_bleu
+        data["crn_bleu_trim"] = best_crn_bleu_trim
+        return data
+
+        # prompt1 = generate_new_prompt5(old_without_minus, review, context)
+        # evaluate(id, prompt1, new, "CACR")
+        # prompt2 = generate_new_prompt5_CRN(old_without_minus, review, context)
+        # evaluate(id, prompt2, new, "CRN")
+        # data = {}
+        # data["instruction"] = generate_instruction(review, context)
+        # data["input"] = old_without_minus
+        # data["output"] = new_without_plus
+        # data_json = json.dumps(data, ensure_ascii=False, indent=8)
+        # return data_json
+
+def evaluate_from_json_file(file_path):
+    def load_results(file_path):
+        with open(file_path, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    result = load_results(file_path)
+    total_llama_em = total_llama_em_trim = total_llama_bleu = total_llama_bleu_trim = 0
+    total_crn_em = total_crn_em_trim = total_crn_bleu = total_crn_bleu_trim = 0
+    count = 0
+    
+    for item in result:
+        if not item["llama_newcode"]=="":  # 确保 llama_code 非空
+            if not len(item["concise_context"]) == 0:
+                total_llama_em += item.get("llama_em", 0)
+                total_llama_em_trim += item.get("llama_em_trim", 0)
+                total_llama_bleu += item.get("llama_bleu", 0)
+                total_llama_bleu_trim += item.get("llama_bleu_trim", 0)
+                total_crn_em += item.get("crn_em", 0)
+                total_crn_em_trim += item.get("crn_em_trim", 0)
+                total_crn_bleu += item.get("crn_bleu", 0)
+                total_crn_bleu_trim += item.get("crn_bleu_trim", 0)
+                if item.get("llama_bleu_trim", 0) < 10:
+                    print(item["id"])
+                count += 1
+    print(f"count:{count}")
+    average_llama_em = total_llama_em / count
+    average_llama_em_trim = total_llama_em_trim / count
+    average_llama_bleu = total_llama_bleu / count
+    average_llama_bleu_trim = total_llama_bleu_trim / count
+    average_crn_em = total_crn_em / count
+    average_crn_em_trim = total_crn_em_trim / count
+    average_crn_bleu = total_crn_bleu / count
+    average_crn_bleu_trim = total_crn_bleu_trim / count
+    print(f"Average LLAMA EM: {average_llama_em}")
+    print(f"Average LLAMA EM Trim: {average_llama_em_trim}")
+    print(f"Average CRN EM: {average_crn_em}")
+    print(f"Average CRN EM Trim: {average_crn_em_trim}")
+    print(f"Average LLAMA BLEU: {average_llama_bleu}")
+    print(f"Average LLAMA BLEU Trim: {average_llama_bleu_trim}")
+    print(f"Average CRN BLEU: {average_crn_bleu}")
+    print(f"Average CRN BLEU Trim: {average_crn_bleu_trim}")
+
+def evaluate_from_json_files():
+    def load_results(file_path):
+        with open(file_path, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    result = load_results('dataset/valid_result6_1.json')
+    final_results = []
+    for item in result:
+        llama_result = re.search(r'```(.*)```', item["model_output"], re.DOTALL)
+        llama_code = llama_result.group(1) if llama_result else ""
+        new_code = "\n".join([line[1:].strip() for line in item["output"].split("\n") if line.strip() != ""])
+        gpt_em, gpt_em_trim, _, _, gpt_bleu, gpt_bleu_trim \
+            = myeval(new_code, llama_code)
+        final_results.append({
+            "instruction": item["instruction"],
+            "input": item["input"],
+            "output": item["output"],
+            "model_output": item["model_output"],  # 可以选择一个代表性的model_output
+            "llama_code": llama_code,
+            "gpt_em": gpt_em,
+            "gpt_em_trim": gpt_em_trim,
+            "gpt_bleu": gpt_bleu,
+            "gpt_bleu_trim": gpt_bleu_trim
+        })
+    with open('dataset/valid_evaluate_result_6.json', 'w', encoding='utf-8') as file:
+        json.dump(final_results, file, indent=4, ensure_ascii=False)
+    with open('dataset/valid_evaluate_result_6.json', 'r', encoding='utf-8') as file:
+        data = json.load(file)
+    total_bleu = 0
+    total_bleu_trim = 0
+    count = 0
+    for item in data:
+        if item.get("llama_code", "").strip():  # 确保 llama_code 非空
+            bleu = item.get("gpt_bleu", 0)
+            bleu_trim = item.get("gpt_bleu_trim", 0)
+            if bleu_trim< 10:
+                print(item.get("input"))
+            total_bleu += item.get("gpt_bleu", 0)
+            total_bleu_trim += item.get("gpt_bleu_trim", 0)
+            print(f"bleu:{bleu} bleu_trim:{bleu_trim}")
+            count += 1
+    average_bleu = total_bleu / count
+    average_bleu_trim = total_bleu_trim / count
+    print(f"Average GPT BLEU: {average_bleu}")
+    print(f"Average GPT BLEU Trim: {average_bleu_trim}")
+
+def evaluate_from_mul_json_files():
+    def load_results(file_path):
+        with open(file_path, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    results1 = load_results('dataset/valid_result5_1.json')
+    results2 = load_results('dataset/valid_result5_2.json')
+    results3 = load_results('dataset/valid_result5_3.json')
+    final_results = []
+    id = 0
+    for item1, item2, item3 in zip(results1, results2, results3):
+        best_em = best_em_trim = best_bleu = best_bleu_trim = 0
+        best_llama_code = ""
+        for item in [item1, item2, item3]:
+            llama_result = re.search(r'```(.*)```', item["model_output"], re.DOTALL)
+            llama_code = llama_result.group(1) if llama_result else ""
+
+            new_code = "\n".join([line[1:].strip() for line in item["output"].split("\n") if line.strip() != ""])
+
+            gpt_em, gpt_em_trim, _, _, gpt_bleu, gpt_bleu_trim \
+                = myeval(new_code, llama_code)
+
+            # 更新最好的指标值
+            if gpt_em > best_em:
+                best_em = gpt_em
+            if gpt_em_trim > best_em_trim:
+                best_em_trim = gpt_em_trim
+            if gpt_bleu > best_bleu:
+                best_bleu = gpt_bleu
+            if gpt_bleu_trim > best_bleu_trim:
+                best_bleu_trim = gpt_bleu_trim
+                best_llama_code = llama_code
+
+        # 保存最好结果到final_results
+        final_results.append({
+            "instruction": item1["instruction"],
+            "input": item1["input"],
+            "output": item1["output"],
+            "model_output": item1["model_output"],  # 可以选择一个代表性的model_output
+            "llama_code": best_llama_code,
+            "gpt_em": best_em,
+            "gpt_em_trim": best_em_trim,
+            "gpt_bleu": best_bleu,
+            "gpt_bleu_trim": best_bleu_trim
+        })
+
+    with open('dataset/valid_evaluate_result4.json', 'w', encoding='utf-8') as file:
+        json.dump(final_results, file, indent=4, ensure_ascii=False)
+
+    with open('dataset/valid_evaluate_result4.json', 'r', encoding='utf-8') as file:
+        data = json.load(file)
+    total_bleu = 0
+    total_bleu_trim = 0
+    count = 0
+    for item in data:
+        if item.get("llama_code", "").strip():  # 确保 llama_code 非空
+            bleu = item.get("gpt_bleu", 0)
+            bleu_trim = item.get("gpt_bleu_trim", 0)
+            if bleu_trim< 10:
+                print(item.get("input"))
+                # continue
+            total_bleu += item.get("gpt_bleu", 0)
+            total_bleu_trim += item.get("gpt_bleu_trim", 0)
+            print(f"bleu:{bleu} bleu_trim:{bleu_trim}")
+            count += 1
+    average_bleu = total_bleu / count
+    average_bleu_trim = total_bleu_trim / count
+    print(f"Average GPT BLEU: {average_bleu}")
+    print(f"Average GPT BLEU Trim: {average_bleu_trim}")
+
 
 if __name__ == "__main__":
-    # main(115)
-    for record in get_db_ids():
-        id = record[0]
-        if id > 455:
-            logging.info(f'Processing {id}',exc_info=True)
-            for i in range(2):
-                try:
-                    main(id)
-                except Exception as e:
-                    print(f"error, id:{id} try the {i}th time:{e}")
-                    sleep(5)
-                    # if i >= 3:
-                    #     for j in range(360):
-                    #         print("waiting for manual stop or {}0s".format(360 - j))
-                    #         with open('manual_stop.json', 'r') as f:
-                    #             data = json.load(f)
-                    #             if data["manual_stop"]:
-                    #                 print("manual stop")
-                    #                 # pdf.save()
-                    #                 exit(0)
-                    #         sleep(10)
-                    continue
-                break
+    # for record in get_db_ids():
+    #     id = record[0]
+    #     if id > 4000 and id < 4100:
+    #         main(id)
+    # main(42)
+    # evaluate_from_json_files()
+    # evaluate_from_mul_json_files()
+
+    # with open('dataset/data_cacr3.json', 'w', encoding='utf-8') as f:
+    #     f.write("[\n    ")
+    #     first_record = True
+    #     for record in get_db_ids():
+    #         id = record[0]
+    #         logging.info(f'Processing {id}',exc_info=True)
+    #         # if id > 4000 and id < 4100:
+    #         # if id == 4071:
+    #         if True:
+    #             try:
+    #                 print(f"processing:{id}")
+    #                 if not first_record:
+    #                     f.write(",\n    ")
+    #                 f.write(json.dumps(main(id)))
+    #                 first_record = False
+    #             except Exception as e:
+    #                 print(f"error, id:{id} {e}")
+    #     f.write("\n]")
+    evaluate_from_json_file('dataset/data_cacr3.json')
+
+    # for record in get_db_ids():
+    #     id = record[0]
+    #     if id > 455:
+    #         logging.info(f'Processing {id}',exc_info=True)
+    #         for i in range(2):
+    #             try:
+    #                 main(id)
+    #             except Exception as e:
+    #                 print(f"error, id:{id} try the {i}th time:{e}")
+    #                 sleep(5)
+    #                 # if i >= 3:
+    #                 #     for j in range(360):
+    #                 #         print("waiting for manual stop or {}0s".format(360 - j))
+    #                 #         with open('manual_stop.json', 'r') as f:
+    #                 #             data = json.load(f)
+    #                 #             if data["manual_stop"]:
+    #                 #                 print("manual stop")
+    #                 #                 # pdf.save()
+    #                 #                 exit(0)
+    #                 #         sleep(10)
+    #                 continue
+    #             break

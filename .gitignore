@@ -6,3 +6,4 @@ debug.log
 /ContextGenerators/__pycache__
 /dataset/repo
 settings.jsonl
+/.vscode

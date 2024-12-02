@@ -1,0 +1,15 @@
+jedi==0.19.2
+tree-sitter==0.23.2
+tree-sitter-c==0.23.2
+tree-sitter-c-sharp==0.23.1
+tree-sitter-cpp==0.23.4
+tree-sitter-go==0.23.4
+tree-sitter-java==0.23.4
+tree-sitter-javascript==0.23.1
+tree-sitter-python==0.23.4
+tree-sitter-ruby==0.23.1
+pymongo==4.10.1
+openai==1.55.3
+requests==2.32.3
+psycopg2==2.9.10
+nltk==3.9.1

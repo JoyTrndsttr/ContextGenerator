@@ -7,3 +7,4 @@ debug.log
 /dataset/repo
 settings.json
 /.vscode
+*.pyc

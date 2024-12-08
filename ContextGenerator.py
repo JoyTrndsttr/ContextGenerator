@@ -4,6 +4,7 @@ import getContext
 import getProjectCommitState
 import logging
 import ErrorProcess
+import json
 
 # Setting up logging
 # logging.basicConfig(filename='log.txt', level=logging.ERROR, format='%(asctime)s:%(levelname)s:%(message)s')
@@ -17,7 +18,7 @@ db_config = {
     'port': '5432'
 }
 
-# 获取数据库中的信息
+# 从postgres数据库获取所有id
 def get_db_info():
     conn = psycopg2.connect(**db_config)
     cursor = conn.cursor()
@@ -30,7 +31,10 @@ def get_db_info():
 
 # 主函数
 def main():
-    ids = ErrorProcess.error_ids2
+    # ids = ErrorProcess.error_ids2
+    with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python.json', 'r') as f:
+        records = json.load(f)
+        ids = [record['_id'] for record in records]
     for id in ids:
     # for record in get_db_info():
     #     id = record[0]

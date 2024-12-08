@@ -17,6 +17,7 @@ db_config = {
 }
 
 # GitHub 个人访问令牌
+# GITHUB_TOKEN = json.load(open("settings.json", encoding='utf-8'))["GITHUB_TOKEN"]
 GITHUB_TOKEN = json.load(open("settings.json", encoding='utf-8'))["GITHUB_TOKEN"]
 
 # 最大查找 parent commit 的次数
@@ -51,6 +52,14 @@ def get_db_info(id):
     conn.close()
     return record
 
+#获取Json文件中的信息
+def get_info_from_jsonfile(file_path, id):
+    with open(file_path, 'r', encoding='utf-8') as file:
+        records = json.load(file)
+        for record in records:
+            if record['_id'] == id:
+                return record
+
 # 使用 GitHub API 获取 commit 信息
 def get_commit_info(repo, commit_sha):
     def get_commit_info_by_page(url):
@@ -62,7 +71,7 @@ def get_commit_info(repo, commit_sha):
         return link_header,commit_info
     
     url = f"https://api.github.com/repos/{repo}/commits/{commit_sha}"
-    # url = "https://api.github.com/repos/open-mmlab/mmdetection/commits/e46b6024629bd2bbec8b7d0b9973e60964e97107"
+    # url = "https://api.github.com/repos/spotify/luigi/commits/03f712cffab169e7b617425c22eb84d82c8f081c"
     
     link_header,commit_infos = get_commit_info_by_page(url)
     while link_header:
@@ -132,8 +141,8 @@ def apply_patch(repo_path, file_info):
     else:
         patchApply()
 
-# 存储commit信息
-def store_commit_details(repo, commit_url):
+# 存储commit信息到postgres
+def store_commit_details_to_db(repo, commit_url):
     commit_sha = commit_url.split('/')[-1]
     commit_info = get_commit_info(repo, commit_sha)
     files = commit_info.get('files', [])
@@ -161,6 +170,26 @@ def store_commit_details(repo, commit_url):
     conn.commit()
     cursor.close()
     conn.close()
+
+#获取commit信息
+def get_commit_details(repo, commit_url):
+    commit_sha = commit_url.split('/')[-1]
+    commit_info = get_commit_info(repo, commit_sha)
+    files = commit_info.get('files', [])
+
+    paths = []
+    code_diff = {}
+    
+    for file_info in files:
+        paths.append(file_info['filename'])
+        if 'patch' in file_info:
+            code_diff[file_info['filename']] =  file_info['patch']
+        else:
+            code_diff[file_info['filename']] =  ''
+
+    paths_str = '\n'.join(paths)
+    code_diff_str = json.dumps(code_diff)
+    return paths_str, code_diff_str
 
 # 还原到特定 commit
 def restore_to_commit(repo, repo_path, target_commit):
@@ -192,9 +221,7 @@ def restore_to_commit(repo, repo_path, target_commit):
 
     return successful_checkout, applied_commits
 
-# 主函数
-def main(id):
-
+def generate_path_code_diff_to_db(id):
     processed_count = 0
     success_count = 0
     failure_count = 0
@@ -220,7 +247,7 @@ def main(id):
                     except PermissionError:
                         #有可能是windows将子模块目录当文件处理
                         print(f"Error,failed to apply patch for {file_info['filename']} commit_info:{commit_info['sha']}")
-            store_commit_details(repo, commit_url)
+            store_commit_details_to_db(repo, commit_url)
             success_count += 1
         else:
             print(f"Failed to restore commit {commit_hash} for ID {record_id}")
@@ -229,5 +256,55 @@ def main(id):
         processed_count += 1
     return successful_checkout
 
+def generate_path_code_diff_to_jsonfile(id , file_path):
+    processed_count = 0
+    success_count = 0
+    failure_count = 0
+    successful_checkout = False
+    
+    record = get_info_from_jsonfile(file_path, id)
+    if record:
+        record_id, repo, commit_url = record["_id"], record["repo"], record["commit_url"]
+        repo_path = f"/mnt/ssd2/wangke/CR_data/repo/{repo.split('/')[1]}"
+        commit_hash = commit_url.split('/')[-1]
+        
+        #获取commit_hash的parents_commit_hash，将项目回溯到parents_commit_hash的状态
+        parents_commit_hash = get_commit_info(repo, commit_hash).get('parents', [])[0]['sha']
+        successful_checkout, applied_commits = restore_to_commit(repo, repo_path, parents_commit_hash)
+
+        if successful_checkout:
+            for commit_info in reversed(applied_commits):
+                files = commit_info.get('files', [])
+                for file_info in files:
+                    try:
+                        apply_patch(repo_path, file_info)
+                        print(f"Applied patch for {file_info['filename']} commit_info:{commit_info['sha']}")
+                    except PermissionError:
+                        #有可能是windows将子模块目录当文件处理
+                        print(f"Error,failed to apply patch for {file_info['filename']} commit_info:{commit_info['sha']}")
+            paths_str, code_diff_str = get_commit_details(repo, commit_url)
+            with open(file_path, 'r', encoding='utf-8') as file:
+                records = json.load(file)
+                for record in records:
+                    if record['_id'] == id:
+                        record['path'] = paths_str
+                        record['code_diff'] = code_diff_str
+                        with open(file_path, 'w', encoding='utf-8') as file:
+                            json.dump(records, file, indent=4)
+                        print(f"Updated record {record_id} in {file_path}")
+                        break
+            success_count += 1
+        else:
+            print(f"Failed to restore commit {commit_hash} for ID {record_id}")
+            failure_count += 1
+        
+        processed_count += 1
+    return successful_checkout
+
+# 主函数
+def main(id):
+    # return generate_path_code_diff_to_db(id)
+    return generate_path_code_diff_to_jsonfile(id, '/mnt/ssd2/wangke/CR_data/dataset/cacr_python.json')
+    
 if __name__ == "__main__":
-    main()
+    main(0)

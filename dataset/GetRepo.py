@@ -11,7 +11,7 @@ db_config = {
     'port': '5432'
 }
 
-def read_jsonl_and_extract_data(file_path):
+def store_jsonfile_to_postgres(file_path):
     repo_data = {}
     with open(file_path, 'r', encoding='utf-8') as file:
         for line in file:
@@ -59,14 +59,38 @@ def read_jsonl_and_extract_data(file_path):
             
     return repo_data
 
+def store_to_json(file_path, output_path):
+    with open(file_path, 'r', encoding='utf-8') as file:
+        with open(output_path, 'w', encoding='utf-8') as output_file:
+            output_file.write("[\n    ")
+            first_record = True
+            for line in file:
+                record = json.loads(line)
+                if record["language"] == "java":
+                    record["code_diff"] = ""
+                    record["context"] = ""
+                    record["path"] = ""
+                    record["llama_code"] = ""
+                    record["llama_em"] = 0
+                    record["llama_em_trim"] = 0
+                    record["llama_bleu"] = 0.0
+                    record["llama_bleu_trim"] = 0.0
+                    print(f"processing {record['_id']}")
+                    if not first_record:
+                        output_file.write(",\n    ")
+                    output_file.write(json.dumps(record))
+                    first_record = False
+            output_file.write("\n]")
+            
 def main():
     # Working directory is set to a specific path
-    files = ['codereview.jsonl', 'codereview_new.jsonl']
-    
-    all_repos = {}
-    for file_path in files:
-        repos = read_jsonl_and_extract_data(file_path)
-        all_repos.update(repos)
+    # files = ['codereview.jsonl', 'codereview_new.jsonl']
+    files = ['/mnt/ssd2/wangke/CR_data/dataset/codereview.jsonl', '/mnt/ssd2/wangke/CR_data/dataset/codereview_new.jsonl']
+    store_to_json(files[1], '/mnt/ssd2/wangke/CR_data/dataset/cacr_java2.json')
+    # all_repos = {}
+    # for file_path in files:
+        # repos = store_jsonfile_to_postgres(file_path)
+        # all_repos.update(repos)
 
 if __name__ == "__main__":
     main()

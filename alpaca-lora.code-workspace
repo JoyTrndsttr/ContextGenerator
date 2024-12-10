@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "../alpaca-lora"
+		},
+		{
+			"path": "."
+		},
+		{
+			"path": "../../../../mnt/ssd2/wangke"
+		}
+	],
+	"settings": {}
+}

@@ -85,6 +85,34 @@ def find_call_node(node):
             call_node_list.append(call_node)
     return call_node_list
 
+#从文件中找到代码的起始位置
+def find_code_start_index_in_file(file_path, code):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            file_source_code = f.read().splitlines()
+
+        # 处理待匹配的 code，移除每行的首字符
+        code_lines = [line[1:] for line in code.split('\n') if len(line) > 1]
+
+        # 若 code_lines 为空，直接返回 -1
+        if not code_lines:
+            return -1
+
+        code_length = len(code_lines)
+        file_length = len(file_source_code)
+
+        # 逐行尝试匹配子序列
+        for i in range(file_length - code_length + 1):
+            if file_source_code[i:i+code_length] == code_lines:
+                return i
+
+        # 若未找到匹配，返回 -1
+        return -1
+
+    except FileNotFoundError:
+        print(f"FileNotFoundError: {file_path}")
+        return -1
+
 #找到最近的上层定义
 def find_recent_def(file_path, line):
     try:
@@ -119,7 +147,16 @@ def calculate_cursor_positions(start_cursor, call_text):
         last_index = part_start
     return cursor_list
 
-def getContext(tree, source_code, file_path, path, code_diff, repo_name):
+def find_node_by_cursor(tree, start_cursor, end_cursor):
+    if not tree: return None
+    for child in tree.children:
+        if child.start_point == start_cursor and child.end_point == end_cursor:
+            return child
+        else :
+            return find_node_by_cursor(child, start_cursor, end_cursor)
+    return None
+
+def getContext(tree, source_code, file_path, path, code_diff, repo_name, old, cursors):
     context = {
         "Imports": set(),
         "Functions": set(),
@@ -134,6 +171,8 @@ def getContext(tree, source_code, file_path, path, code_diff, repo_name):
 
     path = re.sub('/','.',path.split('.')[0])
     class_name = 'undefined'
+
+    find_code_start_index_in_file(file_path, old)
 
     #对出现代码改动的地方，寻找涉及的函数或者import信息，@@行提到的函数或类也算进去
     current_line  = -1

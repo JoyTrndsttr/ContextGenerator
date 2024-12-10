@@ -304,7 +304,7 @@ def generate_path_code_diff_to_jsonfile(id , file_path):
 # 主函数
 def main(id):
     # return generate_path_code_diff_to_db(id)
-    return generate_path_code_diff_to_jsonfile(id, '/mnt/ssd2/wangke/CR_data/dataset/cacr_python.json')
+    return generate_path_code_diff_to_jsonfile(id, '/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test.json')
     
 if __name__ == "__main__":
-    main(0)
+    main(4)

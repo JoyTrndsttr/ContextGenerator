@@ -13,8 +13,9 @@ import tree_sitter_java as tsjava
 import tree_sitter_javascript as tsjs
 import tree_sitter_python as tspython
 import tree_sitter_ruby as tsruby
-from ContextGenerators import PythonContextGenerators
-from ContextGenerators import JavaContextGenerators
+# from ContextGenerators import PythonContextGenerators
+# from ContextGenerators import JavaContextGenerators
+from ContextGenerators.PythonContextGenerator import PythonContextGenerator
 # 设置日志记录
 logging.basicConfig(filename='debug.log', level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s', filemode='w')
@@ -72,7 +73,7 @@ def get_info_from_jsonfile(file_path, id):
                 return record
 
 # 提取上下文信息
-def extract_context(language_parsers, file_path, path, code_diff, repo_name):
+def extract_context(language_parsers, file_path, path, code_diff, repo_name, code_range):
     context = {}
 
     if not os.path.exists(file_path):
@@ -87,15 +88,9 @@ def extract_context(language_parsers, file_path, path, code_diff, repo_name):
     tree,source_code = parse_file(file_path, parser)
 
     if file_extension == '.py':
-        context = PythonContextGenerators.getContext(tree.root_node, source_code, file_path, path, code_diff, repo_name)
-    if file_extension == '.java':
-        context = JavaContextGenerators.getContext(tree.root_node, source_code, file_path, path, code_diff, repo_name)
-    else:
-        context = {
-            "Imports": [],
-            "Functions": []
-        }
-
+        context_generator = PythonContextGenerator(tree.root_node, source_code,file_path, path, code_diff, repo_name, code_range)
+    
+    context = context_generator.getContext()
     return context
 
 #存储context信息
@@ -158,6 +153,14 @@ def generate_context_to_postgres(id):
             context[path] = extract_context(language_parsers, file_path, path, code_diff, repo_name.split('/')[1])
         store_context_to_postgres(record_id, json.dumps(context))
 
+def compare_old_and_diff(old, code_diff):
+    code_diff_lines = code_diff.split('\n')
+    old_lines = old.split('\n')
+    for old_line in old_lines:
+        if old_line not in code_diff_lines:
+            return False, -1, -1
+    return True, code_diff_lines.index(old_lines[0]), code_diff_lines.index(old_lines[-1])
+
 def generate_context_to_jsonfile(id):
     # 设置项目路径
     repo_base_path = "/mnt/ssd2/wangke/CR_data/repo/"
@@ -186,17 +189,15 @@ def generate_context_to_jsonfile(id):
         code_diffs = json.loads(code_diffs)
         repo_path = os.path.join(repo_base_path, repo_name.split('/')[1])
 
-        for path,code_diff in code_diffs.items():
-            tmp = old.split('\n')[0]
+        match,start_index,end_index = False, -1, -1
+        file_path = None
 
-            index = code_diff.find(tmp)
-            start = code_diff[:index].split('@@')[-2].split('-')[1].split(',')[0]
-            print(index)
-            print(int(start))
-            # file_path = os.path.join(repo_path, path.replace('/', '\\')) #win
+        for path,code_diff in code_diffs.items():
+            match, start_index,end_index = compare_old_and_diff(old, code_diff)
             file_path = os.path.join(repo_path, path)
-            context[path] = extract_context(language_parsers, file_path, path, code_diff, repo_name.split('/')[1])
-        store_context_to_jsonfile(record_id, json.dumps(context))
+        if match:
+            context[path] = extract_context(language_parsers, file_path, path, code_diff, repo_name.split('/')[1], (start_index, end_index))
+            # store_context_to_jsonfile(record_id, json.dumps(context))
     
     return context #TODO: 继续精简context,从context中检索信息
 

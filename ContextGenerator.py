@@ -30,15 +30,13 @@ def get_db_info():
         yield record
 
 # 主函数
-def main():
+def main(_id):
     # ids = ErrorProcess.error_ids2
-    with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python.json', 'r') as f:
+    with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test.json', 'r') as f:
         records = json.load(f)
         ids = [record['_id'] for record in records]
     for id in ids:
-    # for record in get_db_info():
-    #     id = record[0]
-        # if id < 2540 : continue
+        # id = _id
         print(f'processing: {id}')
         attempt = 0
         while attempt < 3:
@@ -67,4 +65,4 @@ def main():
     # # except Exception as e:
     # #     print(f'Error processing ID {id}: {e}')
 if __name__ == "__main__":
-    main()
+    main(1)

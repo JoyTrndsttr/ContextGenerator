@@ -210,22 +210,19 @@ def generate_new_prompt5_CRN(old_without_minus, review, context):
               " and comments, unless it is explicitly required by the review."
     return prompt
 
-def genereate_context_prompt(old_without_minus, review):
+# def generate_context_prompt(old_without_minus, review):
 
-    prompt = "As a developer, your pull request receives a reviewer's comment on " \
-              "a specific piece of code that requires a change.In order to make " \
-              "changes based on the review,you need to refer back to the original code. " \
-              "You should provide the code implementation of which function you'd most "\
-              "like to refer to.\n"
-    prompt += "The old code being referred to in the hunk of code changes is:\n"
-    prompt += "```\n{}\n```\n".format(old_without_minus)
-    prompt += "The code review for this code is:\n"
-    prompt += review
-    prompt += "\nPlease provide the function name, class name or variable name " \
-              "you'd like to refer to which have appeared in the old code." \
-              "Your output is formatted as a json object formatted as follows:\n" \
-              "{'function_name':'<function_name>','reason':'<your reason for choosing this function>'}"
-    return prompt
+#     prompt = "As a developer, your pull request receives a reviewer's comment on " \
+#               "a specific piece of code that requires a change.In order to make " \
+#               "changes based on the review,you need to refer back to the original code. " \
+#               "You should provide the code implementation of which function you'd most "\
+#               "like to refer to.\n"
+#     prompt += "The old code being referred to in the hunk of code changes is:\n"
+#     prompt += "```\n{}\n```\n".format(old_without_minus)
+#     prompt += "The code review for this code is:\n"
+#     prompt += review
+#     prompt += "\nIf you need more information to generate the new code, provide the name from the old code and explain why you chose it. Format your response as a JSON object:```{ 'Need more information?': <True/False>, 'function_name': '<function_name>', 'reason': '<reason>' }```"
+#     return prompt
 
 def generate_instruction(review, context):
     '''
@@ -240,6 +237,25 @@ def generate_instruction(review, context):
     prompt += context
     prompt += "\nPlease generate the revised code according to the review." \
               "Input is the old code being referred to in the hunk of code changes:\n"
+    return prompt
+
+def generate_context_prompt(old_without_minus, review, context):
+
+    prompt = "As a developer, your pull request receives a reviewer's comment on " \
+              "a specific piece of code that requires a change.In order to make " \
+              "changes based on the review,you need to refer back to the original code. " \
+              "You should provide the code implementation of which function you'd most "\
+              "like to refer to.\n"
+    prompt += "The old code being referred to in the hunk of code changes is:\n"
+    prompt += "```\n{}\n```\n".format(old_without_minus)
+    prompt += "The code review for this code is:\n"
+    prompt += review
+    if context:
+        prompt += "\nHere is the context json string about the old code:\n"
+        prompt += context
+    # prompt += "If you need more information to generate the new code, provide the function, class, or variable name from the old code you want to reference. Also, indicate where it's used (line and column) and explain why you chose it. Format your response as a JSON object:```{ 'Need more information?': <True/False>, 'function_name': '<function_name>', 'cursor': (<line_number>, <column_number>), 'reason': '<reason>' }```"
+    prompt += "\nIf you need more information to generate the new code, provide the name from the context json string and explain why you chose it. Format your response as a JSON object:```{ 'Need more information?': <True/False>, 'function_name': '<function_name>', 'reason': '<reason>' }```"
+    # prompt += get_few_shot_prompt()
     return prompt
 
 def get_model_response(prompt,temperature=1.0):
@@ -302,29 +318,24 @@ def evaluate(id, prompt, new, type):
     logging.info(f"{gpt_em}, {gpt_em_trim}, _, _, {gpt_bleu}, {gpt_bleu_trim}")
     store_result(id, gpt_em, gpt_em_trim, gpt_bleu, gpt_bleu_trim, type)
 
+def remove_minus_or_plus(old, type):
+    old_without_minus = [] #去除减号
+    for line in old.split("\n"):
+        if line.startswith(type):
+            old_without_minus.append(line[1:])
+        else:
+            old_without_minus.append(line)
+    old_without_minus = "\n".join(old_without_minus)
+    return old_without_minus
+
 def main(id):
     record = get_db_info(id)
     if record:
         _id, old, new, review, context = record
         context = json.dumps(get_concise_context(old, context))
-
-        old_without_minus = [] #去除减号
-        for line in old.split("\n"):
-            if line.startswith('-'):
-                old_without_minus.append(line[1:])
-            else:
-                old_without_minus.append(line)
-        old_without_minus = "\n".join(old_without_minus)
-        
-        new_without_plus = [] #加号换成空格
-        for line in new.split("\n"):
-            if line.startswith('+'):
-                new_without_plus.append(" "+line[1:])
-            else:
-                new_without_plus.append(line)
-        new_without_plus = "\n".join(new_without_plus)
-        
-        prompt_for_get_function_name = genereate_context_prompt(old_without_minus, review)
+        old_without_minus = remove_minus_or_plus(old, "-")
+        new_without_plus = remove_minus_or_plus(new, "+")
+        prompt_for_get_function_name = generate_context_prompt(old_without_minus, review)
         newcode, result = get_model_response(prompt_for_get_function_name)
 
         try:

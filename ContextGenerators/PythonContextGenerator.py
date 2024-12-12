@@ -11,6 +11,8 @@ class PythonContextGenerator:
         self.code_diff = code_diff
         self.repo_name = repo_name
         self.start_index, self.end_index = code_range
+        self.context = {}
+        self.precise_context = {}
 
         #根据code_diff和code_range找到old在source_code中从哪一行开始到哪一行结束
         code_diff_lines = self.code_diff.split('\n')
@@ -33,8 +35,7 @@ class PythonContextGenerator:
         self.testSet = set()
         self.testCount = 0
         #查找所有start_point的行号在self.start_index与self.end_index之间的特定类型node节点
-        self.identifier_node_list = []
-        self.def_node_list = []
+        self.node_list = []
         self.find_node_by_range(self.tree)
 
     def find_node_by_range(self, node):
@@ -46,17 +47,57 @@ class PythonContextGenerator:
             if len(child.children) == 0:
                 self.testSet.add(child.type)
                 if child.start_point[0] in range(self.start_index, self.end_index):
-                    if child.type == "identifier":
-                        self.identifier_node_list.append(child)
-                    elif child.type in ["def", "class"]:
-                        self.def_node_list.append(child)
+                    if child.type in ["def", "class", "identifier"]:
+                        self.node_list.append(child)
             else:
                 self.find_node_by_range(child)
 
-    def getContext(self):
+    def find_definition(self, cursor):
+        def count_indent(s):#计算字符串的缩进的空格数
+            return len(s) - len(s.lstrip(' '))
         
-        context = []
+        script = jedi.Script(self.source_code, path=self.file_path)
+        definitions = script.goto(cursor[0]+1, cursor[1]+1,follow_imports=True)
+        if not definitions: print(f'no definition found in {self.file_path} at ({cursor[0]+1},{cursor[1]+1})')
+        for definition in definitions:
+            print(f"definition: {definition.name} in {definition.module_path._str}")
+            if not definition.module_path or not definition.full_name: continue
+            # if definition.module_path._str.find(self.repo_name) == -1: continue  //是否查找内置函数的定义
+            name = definition.name
+            path = definition.full_name if definition.full_name else definition.module_name
+            type = definition.type
+            text = []
+            try:
+                with open(definition.module_path._str, 'r', encoding='utf-8') as f:
+                    file_source_code = f.read().split('\n')
+                    start = definition.line - 1
+                    end  = start + 1
+                    while end<len(file_source_code)-2 and not (count_indent(file_source_code[start])==count_indent(file_source_code[end]) and not file_source_code[end]==''):
+                        end += 1
+                    for i in range(start, end):
+                        text.append(file_source_code[i])
+            except FileNotFoundError:
+                print(f"FileNotFoundError: {definition.module_path_str}")
+            return {'name': name, 'path': path, 'type': type, 'text': '\n'.join(text)}    
+        return None
+
+    def getContext(self):
         current_function = self.super_function
+        name_list = []
+        for index, node in enumerate(self.node_list):
+            if node.type in ["def", "class"]:
+                current_function = self.node_list[index+1].text
+            elif node.type == "identifier":
+                definition = self.find_definition(node.start_point)
+                if definition:
+                    if definition['name'] not in name_list:
+                        self.context.setdefault(current_function,[]).append(definition)
+                        self.precise_context.setdefault(current_function,[]).append({'name': definition['name'], 'type': definition['type']})
+                        name_list.append(definition['name'])
+        print(self.precise_context)
+        return self.context
+
+        
 
 
         

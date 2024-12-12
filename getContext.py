@@ -88,7 +88,7 @@ def extract_context(language_parsers, file_path, path, code_diff, repo_name, cod
     tree,source_code = parse_file(file_path, parser)
 
     if file_extension == '.py':
-        context_generator = PythonContextGenerator(tree.root_node, source_code,file_path, path, code_diff, repo_name, code_range)
+        context_generator = PythonContextGenerator(tree.root_node, source_code, file_path, path, code_diff, repo_name, code_range)
     
     context = context_generator.getContext()
     return context
@@ -181,8 +181,6 @@ def generate_context_to_jsonfile(id):
         '.rb': load_language(languages['ruby']),
     }
 
-    context = {}
-
     record = get_info_from_jsonfile(output_path, id)
     if record:
         record_id, repo_name, paths, code_diffs, old = record['_id'], record['repo'], record['path'], record['code_diff'] , record['old']
@@ -196,15 +194,14 @@ def generate_context_to_jsonfile(id):
             match, start_index,end_index = compare_old_and_diff(old, code_diff)
             file_path = os.path.join(repo_path, path)
         if match:
-            context[path] = extract_context(language_parsers, file_path, path, code_diff, repo_name.split('/')[1], (start_index, end_index))
+            return extract_context(language_parsers, file_path, path, code_diff, repo_name.split('/')[1], (start_index, end_index))
             # store_context_to_jsonfile(record_id, json.dumps(context))
-    
-    return context #TODO: 继续精简context,从context中检索信息
+    return None
 
 # 主函数
 def main(id):
     # generate_context_to_postgres(id)
-    generate_context_to_jsonfile(id)
+    return generate_context_to_jsonfile(id)
 
 if __name__ == "__main__":
-    main(0)
+    main(1)

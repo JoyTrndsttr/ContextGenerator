@@ -1,6 +1,6 @@
 import psycopg2
 from psycopg2 import sql
-import getContext
+from ContextGenerators.getContextGenerators import LanguageContextGenerator
 import getProjectCommitState
 import logging
 import ErrorProcess
@@ -59,7 +59,10 @@ def main(_id):
             #ReAct框架 
             turn = 0
             
-            context = json.dumps(getContext.main(id))
+            languageContextGenerator = LanguageContextGenerator(id)
+            if not languageContextGenerator: return None
+            contextGenerator = languageContextGenerator.context_generator
+            context = json.dumps(contextGenerator.getContext())
             record = records[id]
             old_without_minus = model.remove_minus_or_plus(record['old'], '-')
             prompt = model.generate_context_prompt(old_without_minus, record["review"], None)

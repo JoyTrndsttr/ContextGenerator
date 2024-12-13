@@ -63,6 +63,11 @@ def main(_id):
             if not languageContextGenerator: return None
             contextGenerator = languageContextGenerator.context_generator
             context = json.dumps(contextGenerator.getContext())
+            contextGenerator.updateSource("epoch")
+            context = json.dumps(contextGenerator.getContext())
+
+
+
             record = records[id]
             old_without_minus = model.remove_minus_or_plus(record['old'], '-')
             prompt = model.generate_context_prompt(old_without_minus, record["review"], None)

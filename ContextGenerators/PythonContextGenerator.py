@@ -3,11 +3,10 @@ import jedi
 import json
 
 class PythonContextGenerator:
-    def __init__(self, node, source_code, file_path, path, code_diff, repo_name, code_range):
+    def __init__(self, node, source_code, file_path, code_diff, repo_name, code_range):
         self.tree = node
         self.source_code = source_code
         self.file_path = file_path
-        self.path = path
         self.code_diff = code_diff
         self.repo_name = repo_name
         self.start_index, self.end_index = code_range

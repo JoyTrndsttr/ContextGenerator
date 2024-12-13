@@ -3,7 +3,9 @@ import jedi
 import json
 
 class PythonContextGenerator:
-    def __init__(self, node, source_code, file_path, code_diff, repo_name, code_range):
+    def __init__(self, parser, node, source_code, file_path, code_diff, repo_name, code_range):
+        self.repo_path = "/mnt/ssd2/wangke/CR_data/repo/repo_name"
+        self.parser = parser
         self.tree = node
         self.source_code = source_code
         self.file_path = file_path
@@ -35,7 +37,9 @@ class PythonContextGenerator:
         self.testCount = 0
         #查找所有start_point的行号在self.start_index与self.end_index之间的特定类型node节点
         self.node_list = []
+        self.name_list = []
         self.find_node_by_range(self.tree)
+        self.definitions = []
 
     def find_node_by_range(self, node):
         if not node: return None
@@ -51,10 +55,26 @@ class PythonContextGenerator:
             else:
                 self.find_node_by_range(child)
 
-    def find_definition(self, cursor):
+    def get_definition_text_info(self, definition):
         def count_indent(s):#计算字符串的缩进的空格数
             return len(s) - len(s.lstrip(' '))
         
+        text, start, end = [], -1, -1
+        try:
+            with open(definition.module_path._str, 'r', encoding='utf-8') as f:
+                file_source_code = f.read().split('\n')
+                start = definition.line - 1
+                end  = start + 1
+                while end<len(file_source_code)-2 and not (count_indent(file_source_code[start])==count_indent(file_source_code[end]) and not file_source_code[end]==''):
+                    end += 1
+                for i in range(start, end):
+                    text.append(file_source_code[i])
+        except FileNotFoundError:
+            print(f"FileNotFoundError: {definition.module_path_str}")
+            return None, None, None
+        return '\n'.join(text), start, end
+
+    def find_definition(self, cursor):
         script = jedi.Script(self.source_code, path=self.file_path)
         definitions = script.goto(cursor[0]+1, cursor[1]+1,follow_imports=True)
         if not definitions: print(f'no definition found in {self.file_path} at ({cursor[0]+1},{cursor[1]+1})')
@@ -65,36 +85,52 @@ class PythonContextGenerator:
             name = definition.name
             path = definition.full_name if definition.full_name else definition.module_name
             type = definition.type
-            text = []
-            try:
-                with open(definition.module_path._str, 'r', encoding='utf-8') as f:
-                    file_source_code = f.read().split('\n')
-                    start = definition.line - 1
-                    end  = start + 1
-                    while end<len(file_source_code)-2 and not (count_indent(file_source_code[start])==count_indent(file_source_code[end]) and not file_source_code[end]==''):
-                        end += 1
-                    for i in range(start, end):
-                        text.append(file_source_code[i])
-            except FileNotFoundError:
-                print(f"FileNotFoundError: {definition.module_path_str}")
-            return {'name': name, 'path': path, 'type': type, 'text': '\n'.join(text)}    
-        return None
+            text, start, end = self.get_definition_text_info(definition)
+            return {'name': name, 'path': path, 'type': type, 'text': text} , definition   
+        return None, None
 
     def getContext(self):
         current_function = self.super_function
-        name_list = []
         for index, node in enumerate(self.node_list):
             if node.type in ["def", "class"]:
                 current_function = self.node_list[index+1].text
             elif node.type == "identifier":
-                definition = self.find_definition(node.start_point)
+                definition, _definition = self.find_definition(node.start_point)
                 if definition:
-                    if definition['name'] not in name_list:
+                    if definition['name'] not in self.name_list:
                         self.context.setdefault(current_function,[]).append(definition)
                         self.precise_context.setdefault(current_function,[]).append({'name': definition['name'], 'type': definition['type']})
-                        name_list.append(definition['name'])
-        print(self.precise_context)
+                        self.definitions.append(_definition)
+                        self.name_list.append(definition['name'])
+        print(self.context)
         return self.context
+    
+    def updateSource(self, name):
+        #根据name找到对应的definition,更新self的参数以获取进一步的context
+        for definition in self.definitions:
+            if definition.name == name:
+                self.file_path = definition.module_path._str
+                with open(self.file_path, 'r', encoding='utf-8') as f:
+                    self.source_code = f.read()
+                    self.tree = self.parser.parse(self.source_code.encode('utf8')).root_node
+                text, start, end = self.get_definition_text_info(definition)
+                # start, end = start+1, end+1
+
+                #找到old最近的上层定义
+                source_code_lines = self.source_code.split('\n')
+                super_function = "default_function"
+                line = start
+                while line > 0 and (source_code_lines[line].startswith(' ') or source_code_lines[line].startswith('')):
+                    if source_code_lines[line].strip().startswith('def ') or source_code_lines[line].strip().startswith('class '):
+                        super_function = source_code_lines[line].split('def ')[1].split('(')[0]
+                        break
+                    line -= 1
+                self.super_function = super_function
+
+                self.node_list = []
+                self.start_index, self.end_index = start+1, end+1
+                self.find_node_by_range(self.tree)
+                return True
 
         
 

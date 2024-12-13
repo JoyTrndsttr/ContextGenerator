@@ -64,7 +64,7 @@ class LanguageContextGenerator:
         self.tree,self.source_code = self.parse_file(self.file_path, self.parser)
         self.context_generator = None
         if self.file_extension == '.py':
-            self.context_generator = PythonContextGenerator(self.tree.root_node, self.source_code, self.file_path, self.code_diff, self.repo_name, (start_index, end_index))
+            self.context_generator = PythonContextGenerator(self.parser, self.tree.root_node, self.source_code, self.file_path, self.code_diff, self.repo_name, (start_index, end_index))
 
     def compare_old_and_diff(self, old, code_diff):
         code_diff_lines = code_diff.split('\n')

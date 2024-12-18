@@ -210,6 +210,7 @@ def generate_new_prompt5_CRN(old_without_minus, review, context):
               " and comments, unless it is explicitly required by the review."
     return prompt
 
+
 # def generate_context_prompt(old_without_minus, review):
 
 #     prompt = "As a developer, your pull request receives a reviewer's comment on " \
@@ -224,19 +225,48 @@ def generate_new_prompt5_CRN(old_without_minus, review, context):
 #     prompt += "\nIf you need more information to generate the new code, provide the name from the old code and explain why you chose it. Format your response as a JSON object:```{ 'Need more information?': <True/False>, 'function_name': '<function_name>', 'reason': '<reason>' }```"
 #     return prompt
 
-def generate_instruction(review, context):
-    '''
-    P1 + Scenario Description.
-    '''
+def prompt_for_instruction(old_without_minus, review, calls):
+    prompt = "As a developer, your pull request receives a reviewer's comment on " \
+              "a specific piece of code that requires a change.In order to make " \
+              "changes based on the review,you need to refer back to the original code. " \
+              "You should provide the code implementation of which function you'd most "\
+              "like to refer to.\n"
+    prompt += "The old code being referred to in the hunk of code changes is:\n"
+    prompt += "```\n{}\n```\n".format(old_without_minus)
+    prompt += "The code review for this code is:\n"
+    prompt += review
+    if len(calls) > 0:
+        prompt += "\nBased on the review, you checked the source code and find that :"
+        for call in calls:
+            caller, callee, callee_text = call
+            if caller == callee: prompt += f"\n{caller} is defined as:\n```\n{callee_text}\n``"
+            else :prompt += f"\n{caller} calls {callee} which is defined as:\n```\n{callee_text}\n```"
+    prompt += "\nIf you need more information to generate the new code, provide the name appears " \
+              "in the source code and explain why you chose it. Format your response" \
+              " as a JSON object:```{ \"need more information?\": \"<True/False>\", \"function_name\":" \
+              " \"<function_name>\", \"reason\": \"<reason>\" }```"
+    return prompt
+
+def prompt_for_refinement(old_without_minus, review, calls):
     prompt = ""
     prompt += "As a developer, imagine you've submitted a pull request and" \
-              " your team leader requests you to make a change to a piece of code."
+              " your team leader requests you to make a change to a piece of code." \
+              " The old code being referred to in the hunk of code changes is:\n"
+    prompt += "```\n{}\n```\n".format(old_without_minus)
     prompt += "There is the code review for this code:\n"
     prompt += review
-    prompt += "\nThere is context about function call:"
-    prompt += context
-    prompt += "\nPlease generate the revised code according to the review." \
-              "Input is the old code being referred to in the hunk of code changes:\n"
+    if len(calls) > 0:
+        prompt += "\nBased on the review, you checked the source code and find that :"
+        for call in calls:
+            caller, callee, callee_text = call
+            if caller == callee: prompt += f"\n{caller} is defined as:\n```\n{callee_text}\n``"
+            else :prompt += f"\n{caller} calls {callee} which is defined as:\n```\n{callee_text}\n```"
+    prompt += "\nPlease generate the revised code according to the review. " \
+              "Please ensure that the revised code follows the original code format" \
+              " and comments, unless it is explicitly required by the review."
+    if len(calls) > 0:
+        line_end = old_without_minus.split("\n")[-1]
+        prompt += f"Specifically,if not required by the review, your code should end with:{line_end}"
     return prompt
 
 def generate_context_prompt(old_without_minus, review, context):
@@ -260,12 +290,10 @@ def generate_context_prompt(old_without_minus, review, context):
 
 def get_model_response(prompt,temperature=1.0):
     answer = model.get_completion([prompt])
-    # print("answer: ",answer)
     result = re.search(r'```(.*)```', answer,re.DOTALL)
-    # print("result: ",result)
+    print(f"prompt:\n{prompt}\nanswer:\n{answer}")
     if result: # TODO 由于模型可能会受到提示词的干扰，应该选表现最好的newcode
         newcode = result.group(1)
-        print(newcode)
     return newcode if result else "", answer
 
 def store_result(_id, em, em_trim, bleu, bleu_trim, type):
@@ -286,6 +314,16 @@ def store_result(_id, em, em_trim, bleu, bleu_trim, type):
     conn.commit()
     cursor.close()
     conn.close()
+
+def calc_em_and_bleu(new_code, new_without_plus):
+    new_code_without_empty_line = []
+    for line in new_code.split("\n"):
+        if line.strip() != "":
+            new_code_without_empty_line.append(line[1:].strip())
+    new_code_without_empty_line = "\n".join(new_code_without_empty_line)
+    gpt_em, gpt_em_trim, _, _, gpt_bleu, gpt_bleu_trim \
+        = myeval(new_code_without_empty_line, new_without_plus)
+    return gpt_em, gpt_em_trim, gpt_bleu, gpt_bleu_trim
 
 def evaluate(id, prompt, new, type):
     def calc_em_and_bleu(gpt_code, gpt_answer):

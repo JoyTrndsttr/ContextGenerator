@@ -7,15 +7,6 @@ import json
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry # type: ignore
 
-# 数据库连接配置
-db_config = {
-    'dbname': 'HCGGraph',
-    'user': 'user',
-    'password': '123456',
-    'host': 'localhost',
-    'port': '5432'
-}
-
 # GitHub 个人访问令牌
 # GITHUB_TOKEN = json.load(open("settings.json", encoding='utf-8'))["GITHUB_TOKEN"]
 GITHUB_TOKEN = json.load(open("/home/wangke/model/ContextGenerator/settings.json", encoding='utf-8'))["GITHUB_TOKEN"]
@@ -42,15 +33,6 @@ def requests_retry_session(
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     return session
-
-# 获取数据库中的信息
-def get_db_info(id):
-    conn = psycopg2.connect(**db_config)
-    cursor = conn.cursor()
-    cursor.execute("SELECT _id, repo, commit_url FROM cacr_py WHERE _id = %s;", [id])
-    record = cursor.fetchone()
-    conn.close()
-    return record
 
 #获取Json文件中的信息
 def get_info_from_jsonfile(file_path, id):
@@ -141,35 +123,6 @@ def apply_patch(repo_path, file_info):
     else:
         patchApply()
 
-# 存储commit信息到postgres
-def store_commit_details_to_db(repo, commit_url):
-    commit_sha = commit_url.split('/')[-1]
-    commit_info = get_commit_info(repo, commit_sha)
-    files = commit_info.get('files', [])
-
-    paths = []
-    code_diff = {}
-    
-    for file_info in files:
-        paths.append(file_info['filename'])
-        if 'patch' in file_info:
-            code_diff[file_info['filename']] =  file_info['patch']
-        else:
-            code_diff[file_info['filename']] =  ''
-
-    paths_str = '\n'.join(paths)
-    code_diff_str = json.dumps(code_diff)
-
-    conn = psycopg2.connect(**db_config)
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE cacr_py
-        SET path = %s, code_diff = %s
-        WHERE commit_url = %s;
-    """, (paths_str, code_diff_str, commit_url))
-    conn.commit()
-    cursor.close()
-    conn.close()
 
 #获取commit信息
 def get_commit_details(repo, commit_url):
@@ -221,41 +174,6 @@ def restore_to_commit(repo, repo_path, target_commit):
 
     return successful_checkout, applied_commits
 
-def generate_path_code_diff_to_db(id):
-    processed_count = 0
-    success_count = 0
-    failure_count = 0
-    successful_checkout = False
-    
-    record = get_db_info(id)
-    if record:
-        record_id, repo, commit_url = record
-        repo_path = os.path.join('dataset\\repo', repo.split('/')[1])
-        commit_hash = commit_url.split('/')[-1]
-        
-        #获取commit_hash的parents_commit_hash，将项目回溯到parents_commit_hash的状态
-        parents_commit_hash = get_commit_info(repo, commit_hash).get('parents', [])[0]['sha']
-        successful_checkout, applied_commits = restore_to_commit(repo, repo_path, parents_commit_hash)
-
-        if successful_checkout:
-            for commit_info in reversed(applied_commits):
-                files = commit_info.get('files', [])
-                for file_info in files:
-                    try:
-                        apply_patch(repo_path, file_info)
-                        print(f"Applied patch for {file_info['filename']} commit_info:{commit_info['sha']}")
-                    except PermissionError:
-                        #有可能是windows将子模块目录当文件处理
-                        print(f"Error,failed to apply patch for {file_info['filename']} commit_info:{commit_info['sha']}")
-            store_commit_details_to_db(repo, commit_url)
-            success_count += 1
-        else:
-            print(f"Failed to restore commit {commit_hash} for ID {record_id}")
-            failure_count += 1
-        
-        processed_count += 1
-    return successful_checkout
-
 def generate_path_code_diff_to_jsonfile(id , file_path):
     processed_count = 0
     success_count = 0
@@ -297,13 +215,13 @@ def generate_path_code_diff_to_jsonfile(id , file_path):
         else:
             print(f"Failed to restore commit {commit_hash} for ID {record_id}")
             failure_count += 1
+            raise Exception("Failed to restore commit")
         
         processed_count += 1
     return successful_checkout
 
 # 主函数
 def main(id):
-    # return generate_path_code_diff_to_db(id)
     return generate_path_code_diff_to_jsonfile(id, '/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test.json')
     
 if __name__ == "__main__":

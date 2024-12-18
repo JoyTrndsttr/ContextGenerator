@@ -8,3 +8,4 @@ debug.log
 settings.json
 /.vscode
 *.pyc
+*.code-workspace

@@ -34,73 +34,106 @@ def get_db_info():
 # 主函数
 def main(_id):
     # ids = ErrorProcess.error_ids2
-    with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test.json', 'r') as f:
-        records = json.load(f)
-        ids = [record['_id'] for record in records]
-        for id in ids:
-            # id = _id
-            if id != 1 : continue
-            print(f'processing: {id}')
+    with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test_with_llama_all.json', 'w') as f0:
+        f0.write('[\n')
+        first_record = True
+        with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test.json', 'r') as f:
+            records = json.load(f)
+            new_records = []
+            for record in records:
+                try:
+                    if record['_id'] > _id : continue
+                    # if not record['_id'] == 4793: continue
+                    id = record['_id']
+                    print(f'processing: {id}')
+                    old_without_minus = model.remove_minus_or_plus(record['old'], '-')
+                    new_without_plus = model.remove_minus_or_plus(record['new'], '+')
 
-            # 获取仓库在commit提交前的状态
-            # attempt = 0
-            # while attempt < 1:
-            #     try:
-            #         successful_checkout = getProjectCommitState.main(id)
-            #         if successful_checkout:
-            #             break
-            #     except Exception as e:
-            #         attempt += 1
-            #         print(f'Error processing ID {id}: {e}')
-            #         if attempt ==3:
-            #             logging.error(f'Error processing ID {id}: {e}', exc_info=True)  # Log error with stack trace
-            #             return None
-            
-            #ReAct框架 
-            turn = 0
-            
-            languageContextGenerator = LanguageContextGenerator(id)
-            if not languageContextGenerator: return None
-            contextGenerator = languageContextGenerator.context_generator
-            context = json.dumps(contextGenerator.getContext())
-            contextGenerator.updateSource("epoch")
-            context = json.dumps(contextGenerator.getContext())
+                    # 获取仓库在commit提交前的状态
+                    attempt = 0
+                    while attempt < 1:
+                        try:
+                            successful_checkout = getProjectCommitState.main(id)
+                            if successful_checkout:
+                                break
+                        except Exception as e:
+                            attempt += 1
+                            print(f'Error processing ID {id}: {e}')
+                            if attempt ==3:
+                                logging.error(f'Error processing ID {id}: {e}', exc_info=True)  # Log error with stack trace
+                                raise Exception(f'获取仓库在commit提交前的状态失败')
+                    
+                    #ReAct框架 
+                    turn, flag_for_more_info, flag_for_context_change = 0, True, True
+                    
+                    languageContextGenerator = LanguageContextGenerator(id)
+                    if not languageContextGenerator: return None
+                    contextGenerator = languageContextGenerator.context_generator
+                    calls = [] #元组格式，（调用的函数，被调用的函数，被调用函数的实现）
+                    results = [] #存储每一个turn的结果
+                    name = "" #存储要检索的函数名
 
+                    while turn < 6 and flag_for_more_info and flag_for_context_change:
+                        turn += 1
+                        if name: contextGenerator.updateSource(name)
+                        definitions = contextGenerator.getContext()
+                        result = {"turn": turn, "prompt_for_refinement": "", "result_json": "", "prompt_for_instruction": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
+                        
+                        max_attempts = 3
+                        # 第二步：根据context、old_code和review生成new_code，并评估结果（这里放前面是要不加context先评估一次）
+                        for i in range(max_attempts):
+                            result["prompt_for_refinement"] = model.prompt_for_refinement(old_without_minus, record["review"], calls)
+                            new_code, answer = model.get_model_response(result["prompt_for_refinement"])
+                            if not new_code: continue
+                            em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(new_code, new_without_plus)
+                            if bleu_trim > result["bleu_trim"]: #取最好值
+                                result["em"], result["em_trim"], result["bleu"], result["bleu_trim"] = em, em_trim, bleu, bleu_trim
+                                result["new_code"] = new_code.split('\n')
 
+                        # 第一步：判断是否要继续寻找information，给出要查找的函数名
+                        flag_for_context_change = False    #用于判断模型有没有给出有效的函数名以继续查找context
+                        for i in range(max_attempts):
+                            result["prompt_for_instruction"] = model.prompt_for_instruction(old_without_minus, record["review"], calls)
+                            result["result_json"], answer = model.get_model_response(result["prompt_for_instruction"])
+                            if not result["result_json"]: continue
+                            # flag = re.findall(r'"need more information\?": "(.*?)",', result_json)[0]
+                            # if not flag: continue
+                            # flag = False if flag == "False" else True
+                            name = re.findall(r'"function_name": "(.*?)",', result["result_json"])
+                            if len(name) == 0: continue
+                            name = name[0]
+                            #在definitions中查找name，并存入函数调用关系以及被调用函数的实现
+                            
+                            definition_name = next((definition for definition in definitions if definition['name'] == name), None)
+                            if definition_name:
+                                exist_name = next((call[1] for call in calls if call[1] == name), None)
+                                if exist_name: continue #如果已经存在该函数的调用关系，则跳过
+                                calls.append((definition_name['caller'], name, definition_name['text']))
+                                flag_for_context_change = True
+                                break
+                        #调整result的格式以方便阅读
+                        result["prompt_for_instruction"] = result["prompt_for_instruction"].split('\n')
+                        result["prompt_for_refinement"] = result["prompt_for_refinement"].split('\n')
+                        result["result_json"] = result["result_json"].split('\n')
+                        results.append(result)
+                    
+                    record["results"] = results
+                    record["context"] = json.dumps(definitions)
+                    record["llama_em"] = sum(result["em"] for result in results)/len(results)
+                    record["llama_em_trim"] = sum(result["em_trim"] for result in results)/len(results)
+                    record["llama_bleu"] = sum(result["bleu"] for result in results)/len(results)
+                    record["llama_bleu_trim"] = sum(result["bleu_trim"] for result in results)/len(results)
 
-            record = records[id]
-            old_without_minus = model.remove_minus_or_plus(record['old'], '-')
-            prompt = model.generate_context_prompt(old_without_minus, record["review"], None)
-            result, answer = model.get_model_response(prompt) #result为空的话需要重复几次
-            print(f'ReAct: {result}')
-            #待匹配的字符串："function_name": "cross_entropy",
-            # name = re.findall(r'"function_name": "(.*?)",', result)[0]
-            result_json = json.loads(result)
-            function_name = result_json['function_name']
-            # for func_name, 
+                    #写入文件
+                    if not first_record:
+                        f0.write(',\n')  # 写入逗号和换行
+                    first_record = False
+                    json.dump(record, f0, indent=4)
+                    new_records.append(record)
 
-            # while turn < 6:
-            #     if result and turn < 5 :#and result['Need more information'] == True:
-            #         turn += 1
-            #         prompt = model.generate_context_prompt(old_without_minus, record["review"], context)
-            #         result, answer = model.get_model_response(prompt)
-            #     else:
-            #         prompt = model.generate_new_prompt5_CRN(old_without_minus, record["review"], context)
-            #         result, answer = model.get_model_response(prompt)
-            #         break
-    
-
-    
-    # id = 1408
-    # print(f'processing: {id}')
-    # successful_checkout = getProjectCommitState.main(id)
-    # if successful_checkout:
-    #     getContext.main(id)
-    # # try:
-    # #     successful_checkout = getProjectCommitState.main(id)
-    # #     if successful_checkout:
-    # #         getContext.main(id)
-    # # except Exception as e:
-    # #     print(f'Error processing ID {id}: {e}')
+                except Exception as e:
+                    print(f'Error processing ID {id}: {e}')
+            print(f"All {len(new_records)} records processed")
+        f0.write('\n]')
 if __name__ == "__main__":
-    main(1)
+    main(15000)

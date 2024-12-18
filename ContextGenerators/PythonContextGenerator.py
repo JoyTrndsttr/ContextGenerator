@@ -13,12 +13,14 @@ class PythonContextGenerator:
         self.repo_name = repo_name
         self.start_index, self.end_index = code_range
         self.context = {}
-        self.precise_context = {}
+        # self.precise_context = {}
 
         #根据code_diff和code_range找到old在source_code中从哪一行开始到哪一行结束
         code_diff_lines = self.code_diff.split('\n')
-        code_diff_prefix = code_diff_lines[self.start_index-1]  ##sample '@@ -274,6 +274,7 @@ def get(self):'
-        start = int(re.search(r'(\d+)', code_diff_prefix).group(1)) - 1
+        for i in reversed(range(0,self.start_index)):
+            code_diff_prefix = code_diff_lines[i]  ##sample '@@ -274,6 +274,7 @@ def get(self):'
+            if code_diff_prefix.startswith('@@'): break
+        start = int(re.search(r'(\d+)', code_diff_prefix).group(1))
         end = start + (self.end_index - self.start_index)
         self.start_index, self.end_index = start, end
         
@@ -27,8 +29,11 @@ class PythonContextGenerator:
         super_function = "default_function"
         line = start
         while line > 0 and (source_code_lines[line].startswith(' ') or source_code_lines[line].startswith('')):
-            if source_code_lines[line].strip().startswith('def ') or source_code_lines[line].strip().startswith('class '):
+            if source_code_lines[line].strip().startswith('def '):
                 super_function = source_code_lines[line].split('def ')[1].split('(')[0]
+                break
+            elif source_code_lines[line].strip().startswith('class '):
+                super_function = source_code_lines[line].split('class ')[1].split('(')[0]
                 break
             line -= 1
         self.super_function = super_function
@@ -40,6 +45,8 @@ class PythonContextGenerator:
         self.name_list = []
         self.find_node_by_range(self.tree)
         self.definitions = []
+        self.pricise_definitions = []
+        self.calls = [] #存储调用关系，元组形式(调用函数名，被调用函数名)
 
     def find_node_by_range(self, node):
         if not node: return None
@@ -77,9 +84,9 @@ class PythonContextGenerator:
     def find_definition(self, cursor):
         script = jedi.Script(self.source_code, path=self.file_path)
         definitions = script.goto(cursor[0]+1, cursor[1]+1,follow_imports=True)
-        if not definitions: print(f'no definition found in {self.file_path} at ({cursor[0]+1},{cursor[1]+1})')
+        if not definitions: print(f'No definition found in {self.file_path} at ({cursor[0]+1},{cursor[1]+1})')
         for definition in definitions:
-            print(f"definition: {definition.name} in {definition.module_path._str}")
+            print(f"Find definition: {definition.name} in {definition.module_path._str}")
             if not definition.module_path or not definition.full_name: continue
             # if definition.module_path._str.find(self.repo_name) == -1: continue  //是否查找内置函数的定义
             name = definition.name
@@ -93,17 +100,20 @@ class PythonContextGenerator:
         current_function = self.super_function
         for index, node in enumerate(self.node_list):
             if node.type in ["def", "class"]:
-                current_function = self.node_list[index+1].text
+                current_function = self.node_list[index+1].text.decode('utf-8')
             elif node.type == "identifier":
                 definition, _definition = self.find_definition(node.start_point)
                 if definition:
                     if definition['name'] not in self.name_list:
-                        self.context.setdefault(current_function,[]).append(definition)
-                        self.precise_context.setdefault(current_function,[]).append({'name': definition['name'], 'type': definition['type']})
-                        self.definitions.append(_definition)
-                        self.name_list.append(definition['name'])
-        print(self.context)
-        return self.context
+                        definition['caller'] = current_function
+                        # self.context.setdefault(current_function,[]).append(definition) #仅包含四个元素的definition对象
+                        self.pricise_definitions.append(definition) #包含五个元素的definition对象
+                        # self.precise_context.setdefault(current_function,[]).append({'name': definition['name'], 'type': definition['type']})
+                        self.definitions.append(_definition) #完整版的definition对象
+                        self.name_list.append(definition['name']) #用于去重
+                        self.calls.append((current_function, definition['name'])) #存储调用关系
+        # print(self.context)
+        return self.pricise_definitions
     
     def updateSource(self, name):
         #根据name找到对应的definition,更新self的参数以获取进一步的context

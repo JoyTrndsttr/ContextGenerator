@@ -25,7 +25,7 @@ class LanguageContextGenerator:
         #初始化变量
         self.id = id
         self.repo_base_path = "/mnt/ssd2/wangke/CR_data/repo/"
-        self.output_path = "/mnt/ssd2/wangke/CR_data/dataset/cacr_python.json"
+        self.output_path = "/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test.json"
         self.language_parsers = {
             '.c': self.load_language(Language(tsc.language())),
             '.cpp': self.load_language(Language(tscpp.language())),
@@ -54,6 +54,7 @@ class LanguageContextGenerator:
         for path,code_diff in self.code_diffs.items():
             match, start_index,end_index = self.compare_old_and_diff(self.old, code_diff)
             self.file_path = os.path.join(self.repo_path, path)
+            if match: break
         if not match or not os.path.exists(self.file_path): return None
         self.code_diff = code_diff
 

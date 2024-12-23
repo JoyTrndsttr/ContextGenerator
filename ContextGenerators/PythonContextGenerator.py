@@ -86,8 +86,8 @@ class PythonContextGenerator:
         definitions = script.goto(cursor[0]+1, cursor[1]+1,follow_imports=True)
         if not definitions: print(f'No definition found in {self.file_path} at ({cursor[0]+1},{cursor[1]+1})')
         for definition in definitions:
-            print(f"Find definition: {definition.name} in {definition.module_path._str}")
             if not definition.module_path or not definition.full_name: continue
+            print(f"Find definition: {definition.name} in {definition.module_path._str}")
             # if definition.module_path._str.find(self.repo_name) == -1: continue  //是否查找内置函数的定义
             name = definition.name
             path = definition.full_name if definition.full_name else definition.module_name
@@ -131,8 +131,11 @@ class PythonContextGenerator:
                 super_function = "default_function"
                 line = start
                 while line > 0 and (source_code_lines[line].startswith(' ') or source_code_lines[line].startswith('')):
-                    if source_code_lines[line].strip().startswith('def ') or source_code_lines[line].strip().startswith('class '):
+                    if source_code_lines[line].strip().startswith('def '):
                         super_function = source_code_lines[line].split('def ')[1].split('(')[0]
+                        break
+                    elif source_code_lines[line].strip().startswith('class '):
+                        super_function = source_code_lines[line].split('class ')[1].split('(')[0]
                         break
                     line -= 1
                 self.super_function = super_function

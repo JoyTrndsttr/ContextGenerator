@@ -86,8 +86,9 @@ def apply_patch(repo_path, file_info):
         try:
             with open(file_path, 'r', encoding='utf-8') as file:
                 file_content = file.readlines()
-        except FileNotFoundError:
-            print("File not Found")
+        except Exception as e:
+            print(f"Error processing patch for {file_path}: {e}")
+            return
         start_line = None
         line_change = 0 #补丁所在行修正
         for line in patch.split('\n'):# 解析补丁并应用到文件

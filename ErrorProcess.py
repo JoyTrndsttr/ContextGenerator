@@ -5,12 +5,12 @@ error_ids = [146, 155, 157, 158, 353, 397, 739, 825, 870, 1079, 1187, 1215, 1355
 
 def extract_error_ids(log_file):
     error_ids = []
-    error_pattern = re.compile(r'ERROR - Error processing ID (\d+):')
+    error_pattern = re.compile(r"Error processing ID (\d+):")
 
     # Using errors='ignore' to bypass decoding errors
     with open(log_file, 'r', encoding='utf-8', errors='ignore') as file:
         for line in file:
-            if 'ERROR' in line:
+            if 'Error' in line:
                 match = error_pattern.search(line)
                 if match:
                     error_ids.append(int(match.group(1)))
@@ -18,7 +18,7 @@ def extract_error_ids(log_file):
     return error_ids
 
 if __name__ == "__main__":
-    log_filename = 'debug.log'
+    log_filename = '/mnt/ssd2/wangke/log/cacr_py_all.logbackup'
     ids = extract_error_ids(log_filename)
     print("Extracted Error IDs Count:", len(ids))
-    # print("Extracted Error IDs:", ids)
+    print("Extracted Error IDs:", ids)

@@ -25,7 +25,7 @@ class LanguageContextGenerator:
         #初始化变量
         self.id = id
         self.repo_base_path = "/mnt/ssd2/wangke/CR_data/repo/"
-        self.output_path = "/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test.json"
+        self.output_path = "/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json"
         self.language_parsers = {
             '.c': self.load_language(Language(tsc.language())),
             '.cpp': self.load_language(Language(tscpp.language())),

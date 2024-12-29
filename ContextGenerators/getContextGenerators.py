@@ -70,10 +70,23 @@ class LanguageContextGenerator:
     def compare_old_and_diff(self, old, code_diff):
         code_diff_lines = code_diff.split('\n')
         old_lines = old.split('\n')
+        old_lines = [line for line in old_lines if line]
+        positions = []
         for old_line in old_lines:
-            if old_line not in code_diff_lines:
+            flag = False
+            if old_line in code_diff_lines:
+                positions.append(code_diff_lines.index(old_line))
+                flag = True
+            else:
+                for index, line in enumerate(code_diff_lines):
+                    position = line.find(old_line)
+                    if position != -1:
+                        positions.append(index)
+                        flag = True
+                        break
+            if not flag:
                 return False, -1, -1
-        return True, code_diff_lines.index(old_lines[0]), code_diff_lines.index(old_lines[-1])
+        return True, positions[0], positions[-1]
     
     def load_language(self, language): # 加载语言包
         parser = Parser()

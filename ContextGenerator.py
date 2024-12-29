@@ -36,7 +36,7 @@ def get_db_info():
 def main(_id):
     # ids = ErrorProcess.error_ids2
     # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test_with_llama_all.json', 'w') as f0:
-    with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_error_process.json', 'w') as f0:
+    with open('/mnt/ssd2/wangke/CR_data/dataset/test.json', 'w') as f0:
         f0.write('[\n')
         first_record = True
         with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json', 'r') as f:
@@ -44,8 +44,8 @@ def main(_id):
             new_records = []
             for record in records:
                 try:
-                    # if record['_id'] > _id : continue
-                    # if not record['_id'] == _id: continue
+                    # if not record['_id'] > 0 : continue
+                    if not record['_id'] == _id: continue
                     id = record['_id']
                     print(f'processing: {id}')
                     old_without_minus = model.remove_minus_or_plus(record['old'], '-')
@@ -84,6 +84,7 @@ def main(_id):
                         max_attempts = 3
                         # 第二步：根据context、old_code和review生成new_code，并评估结果（这里放前面是要不加context先评估一次）
                         for i in range(max_attempts):
+                            #TODO:需要更改prompt的长度，设置限制
                             result["prompt_for_refinement"] = model.prompt_for_refinement(old_without_minus, record["review"], calls)
                             new_code, answer = model.get_model_response(result["prompt_for_refinement"])
                             if not new_code: continue
@@ -117,6 +118,7 @@ def main(_id):
                         result["prompt_for_instruction"] = result["prompt_for_instruction"].split('\n')
                         result["prompt_for_refinement"] = result["prompt_for_refinement"].split('\n')
                         result["result_json"] = result["result_json"].split('\n')
+                        result["new_code_groud_truth"] = record["new"].split('\n')
                         results.append(result)
                     
                     record["results"] = results
@@ -139,4 +141,4 @@ def main(_id):
             print(f"All {len(new_records)} records processed")
         f0.write('\n]')
 if __name__ == "__main__":
-    main(3844)
+    main(8696)

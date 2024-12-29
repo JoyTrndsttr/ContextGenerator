@@ -17,7 +17,7 @@ class PythonContextGenerator:
 
         #根据code_diff和code_range找到old在source_code中从哪一行开始到哪一行结束
         code_diff_lines = self.code_diff.split('\n')
-        for i in reversed(range(0,self.start_index)):
+        for i in reversed(range(0,self.start_index+1)):
             code_diff_prefix = code_diff_lines[i]  ##sample '@@ -274,6 +274,7 @@ def get(self):'
             if code_diff_prefix.startswith('@@'): break
         start = int(re.search(r'(\d+)', code_diff_prefix).group(1))

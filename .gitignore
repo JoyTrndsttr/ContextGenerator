@@ -9,3 +9,5 @@ settings.json
 /.vscode
 *.pyc
 *.code-workspace
+log.txt
+test.ipynb

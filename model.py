@@ -239,8 +239,23 @@ def prompt_for_instruction(old_without_minus, review, calls):
         prompt += "\nBased on the review, you checked the source code and find that :"
         for call in calls:
             caller, callee, callee_text = call
-            if caller == callee: prompt += f"\n{caller} is defined as:\n```\n{callee_text}\n``"
-            else :prompt += f"\n{caller} calls {callee} which is defined as:\n```\n{callee_text}\n```"
+            callee_text_list = callee_text.split('\n')
+            if len(callee_text_list) > 20:
+                concise_callee_text = ""
+                concise_callee_text += callee_text_list[0] + "\n"
+                for callee_text_line in callee_text_list[1:]:
+                    if callee_text_line.find("def") != -1 :
+                        concise_callee_text += callee_text_line + "\n"
+            if caller == callee or caller == "default_function": 
+                if len(callee_text_list) > 20:
+                    prompt += f"The concise definition of \n{caller} is:\n```\n{concise_callee_text}\n``` "
+                else:
+                    prompt += f"\n{caller} is defined as:\n```\n{callee_text}\n``"
+            else :
+                if len(callee_text_list) > 20:
+                    prompt += f"\n{caller} calls {callee}, and the concise definition of {callee} is:\n```\n{concise_callee_text}\n``` "
+                else:
+                    prompt += f"\n{caller} calls {callee} which is defined as:\n```\n{callee_text}\n```"
     prompt += "\nIf you need more information to generate the new code, provide the name appears " \
               "in the source code and explain why you chose it. Format your response" \
               " as a JSON object:```{ \"need more information?\": \"<True/False>\", \"function_name\":" \
@@ -259,8 +274,23 @@ def prompt_for_refinement(old_without_minus, review, calls):
         prompt += "\nBased on the review, you checked the source code and find that :"
         for call in calls:
             caller, callee, callee_text = call
-            if caller == callee: prompt += f"\n{caller} is defined as:\n```\n{callee_text}\n``"
-            else :prompt += f"\n{caller} calls {callee} which is defined as:\n```\n{callee_text}\n```"
+            callee_text_list = callee_text.split('\n')
+            if len(callee_text_list) > 20:
+                concise_callee_text = ""
+                concise_callee_text += callee_text_list[0] + "\n"
+                for callee_text_line in callee_text_list[1:]:
+                    if callee_text_line.find("def") != -1 :
+                        concise_callee_text += callee_text_line + "\n"
+            if caller == callee or caller == "default_function": 
+                if len(callee_text_list) > 20:
+                    prompt += f"The concise definition of \n{caller} is:\n```\n{concise_callee_text}\n``` "
+                else:
+                    prompt += f"\n{caller} is defined as:\n```\n{callee_text}\n``"
+            else :
+                if len(callee_text_list) > 20:
+                    prompt += f"\n{caller} calls {callee}, and the concise definition of {callee} is:\n```\n{concise_callee_text}\n``` "
+                else:
+                    prompt += f"\n{caller} calls {callee} which is defined as:\n```\n{callee_text}\n```"
     prompt += "\nPlease generate the revised code according to the review. " \
               "Please ensure that the revised code follows the original code format" \
               " and comments, unless it is explicitly required by the review."
@@ -322,7 +352,7 @@ def calc_em_and_bleu(new_code, new_without_plus):
             new_code_without_empty_line.append(line[1:].strip())
     new_code_without_empty_line = "\n".join(new_code_without_empty_line)
     gpt_em, gpt_em_trim, _, _, gpt_bleu, gpt_bleu_trim \
-        = myeval(new_code_without_empty_line, new_without_plus)
+        = myeval(new_without_plus, new_code_without_empty_line)
     return gpt_em, gpt_em_trim, gpt_bleu, gpt_bleu_trim
 
 def evaluate(id, prompt, new, type):

@@ -36,7 +36,7 @@ def get_db_info():
 def main(_id):
     # ids = ErrorProcess.error_ids2
     # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test_with_llama_all.json', 'w') as f0:
-    with open('/mnt/ssd2/wangke/CR_data/dataset/test.json', 'w') as f0:
+    with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_all.json', 'w') as f0:
         f0.write('[\n')
         first_record = True
         with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json', 'r') as f:
@@ -45,11 +45,12 @@ def main(_id):
             for record in records:
                 try:
                     # if not record['_id'] > 0 : continue
-                    if not record['_id'] == _id: continue
+                    # if not record['_id'] == _id: continue
                     id = record['_id']
                     print(f'processing: {id}')
-                    old_without_minus = model.remove_minus_or_plus(record['old'], '-')
-                    new_without_plus = model.remove_minus_or_plus(record['new'], '+')
+                    old_without_minus = model.remove_prefix(record['old'])
+                    new_without_plus = model.remove_prefix(record['new'])
+                    new = record['new']
 
                     # 获取仓库在commit提交前的状态
                     attempt = 0
@@ -77,6 +78,7 @@ def main(_id):
 
                     while turn < 6 and flag_for_more_info and flag_for_context_change:
                         turn += 1
+                        print(f"turn {turn}")
                         if name: contextGenerator.updateSource(name)
                         definitions = contextGenerator.getContext()
                         result = {"turn": turn, "prompt_for_refinement": "", "result_json": "", "prompt_for_instruction": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
@@ -88,10 +90,24 @@ def main(_id):
                             result["prompt_for_refinement"] = model.prompt_for_refinement(old_without_minus, record["review"], calls)
                             new_code, answer = model.get_model_response(result["prompt_for_refinement"])
                             if not new_code: continue
-                            em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(new_code, new_without_plus)
-                            if bleu_trim > result["bleu_trim"]: #取最好值
+                            new_code_lines = new_code.split('\n')
+                            #用于去除new_code多生成的代码补全
+                            if not result["turn"] == 1: 
+                                end_line = record["old"].split('\n')[-1][1:]
+                                index = -1
+                                for i, line in enumerate(new_code_lines):
+                                    if line.strip() == end_line.strip():
+                                        index = i
+                                if index != -1:
+                                    new_code_lines = new_code_lines[:index+1]
+                                    print(f"已在new_code中截取到{end_line}")
+                                else: 
+                                    print(f"没有在new_code中找到{end_line}")
+                            em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(new, new_code)
+                            if bleu + bleu_trim > result["bleu"] + result["bleu_trim"]: #取最好值
                                 result["em"], result["em_trim"], result["bleu"], result["bleu_trim"] = em, em_trim, bleu, bleu_trim
-                                result["new_code"] = new_code.split('\n')
+                                result["new_code"] = new_code_lines
+                                result["new_code_groud_truth"] = new.split('\n')
 
                         # 第一步：判断是否要继续寻找information，给出要查找的函数名
                         flag_for_context_change = False    #用于判断模型有没有给出有效的函数名以继续查找context
@@ -141,4 +157,4 @@ def main(_id):
             print(f"All {len(new_records)} records processed")
         f0.write('\n]')
 if __name__ == "__main__":
-    main(8696)
+    main(0)

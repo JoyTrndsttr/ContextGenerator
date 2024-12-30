@@ -345,14 +345,10 @@ def store_result(_id, em, em_trim, bleu, bleu_trim, type):
     cursor.close()
     conn.close()
 
-def calc_em_and_bleu(new_code, new_without_plus):
-    new_code_without_empty_line = []
-    for line in new_code.split("\n"):
-        if line.strip() != "":
-            new_code_without_empty_line.append(line[1:].strip())
-    new_code_without_empty_line = "\n".join(new_code_without_empty_line)
+def calc_em_and_bleu(new, new_code):
+    new_without_plus = remove_prefix(new)
     gpt_em, gpt_em_trim, _, _, gpt_bleu, gpt_bleu_trim \
-        = myeval(new_without_plus, new_code_without_empty_line)
+        = myeval(new_without_plus, new_code)
     return gpt_em, gpt_em_trim, gpt_bleu, gpt_bleu_trim
 
 def evaluate(id, prompt, new, type):
@@ -386,15 +382,12 @@ def evaluate(id, prompt, new, type):
     logging.info(f"{gpt_em}, {gpt_em_trim}, _, _, {gpt_bleu}, {gpt_bleu_trim}")
     store_result(id, gpt_em, gpt_em_trim, gpt_bleu, gpt_bleu_trim, type)
 
-def remove_minus_or_plus(old, type):
-    old_without_minus = [] #去除减号
+def remove_prefix(old):
+    old_without_minus = [] #去除第一个符号
     for line in old.split("\n"):
-        if line.startswith(type):
+        if line.strip() != "":
             old_without_minus.append(line[1:])
-        else:
-            old_without_minus.append(line)
-    old_without_minus = "\n".join(old_without_minus)
-    return old_without_minus
+    return "\n".join(old_without_minus)
 
 def main(id):
     record = get_db_info(id)

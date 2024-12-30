@@ -1,7 +1,8 @@
 import json
 import model
 
-with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new_trim2.json', 'r') as f:
+# with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_all_trim.json', 'r') as f:
+with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new_trim3.json', 'r') as f:
     records = json.load(f)
 
     score = [[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0],],[0,[0,0,0,0]],[0,[0,0,0,0]]]
@@ -44,41 +45,42 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new_trim2.
     
 
 # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test_with_llama_all.json', 'r') as f:
-# with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new_part2.json', 'r') as f:
-#     records = json.load(f)
-#     delete_ids = []
-#     for record in records:
-#         if record["_id"] == 2289:
-#             pass
-#         if not record.get("new"): continue
-#         results = record['results']
-#         end_line = record["old"].split('\n')[-1][1:]
-#         for result in results:
+with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new.json', 'r') as f:
+    records = json.load(f)
+    delete_ids = []
+    for record in records:
+        if record["_id"] == 2289:
+            pass
+        if not record.get("new"): continue
+        results = record['results']
+        end_line = record["old"].split('\n')[-1][1:]
+        for result in results:
             
-#             result["new_code_groud_truth"] = record["new"].split('\n')
-#             index = -1
-#             if not result.get("new_code"):
-#                 results.remove(result)
-#                 continue
-#             if result["turn"] == 1: continue
-#             for i, line in enumerate(result["new_code"]):
-#                 if line.strip() == end_line.strip():
-#                     index = i
-#             if index != -1:
-#                 result["new_code"] = result["new_code"][:index+1]
-#                 print(f"已在new_code中截取到{end_line}")
-#                 new_without_plus = model.remove_minus_or_plus(record['new'], '+')
-#                 new_code = result["new_code"]
-#                 # em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(('\n').join(new_code), new_without_plus)
-#                 em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(new_without_plus, ('\n').join(new_code))
-#                 result["em"] = em
-#                 result["em_trim"] = em_trim
-#                 result["bleu"] = bleu
-#                 result["bleu_trim"] = bleu_trim
-#             else: 
-#                 print(f"没有在new_code中找到{end_line}")
-#                 delete_ids.append(record["_id"])
-#     records = [record for record in records if record["_id"] not in delete_ids]
+            result["new_code_groud_truth"] = record["new"].split('\n')
+            index = -1
+            if not result.get("new_code"):
+                results.remove(result)
+                continue
+            if result["turn"] == 1: continue
+            for i, line in enumerate(result["new_code"]):
+                if line.strip() == end_line.strip():
+                    index = i
+            if index != -1:
+                result["new_code"] = result["new_code"][:index+1]
+                print(f"已在new_code中截取到{end_line}")
+                # new_without_plus = model.remove_minus_or_plus(record['new'], '+')
+                new = record['new']
+                new_code = result["new_code"]
+                # em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(('\n').join(new_code), new_without_plus)
+                em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(new, ('\n').join(new_code))
+                result["em"] = em
+                result["em_trim"] = em_trim
+                result["bleu"] = bleu
+                result["bleu_trim"] = bleu_trim
+            else: 
+                print(f"没有在new_code中找到{end_line}")
+                # delete_ids.append(record["_id"])
+    # records = [record for record in records if record["_id"] not in delete_ids]
 
-#     with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new_trim2.json', 'w') as f1:
-#         f1.write(json.dumps(records, indent=4))
+    with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new_trim4.json', 'w') as f1:
+        f1.write(json.dumps(records, indent=4))

@@ -36,7 +36,7 @@ def get_db_info():
 def main(_id):
     # ids = ErrorProcess.error_ids2
     # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test_with_llama_all.json', 'w') as f0:
-    with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_all.json', 'w') as f0:
+    with open('/mnt/ssd2/wangke/CR_data/dataset/test.json', 'w') as f0:
         f0.write('[\n')
         first_record = True
         with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json', 'r') as f:
@@ -45,7 +45,7 @@ def main(_id):
             for record in records:
                 try:
                     # if not record['_id'] > 0 : continue
-                    # if not record['_id'] == _id: continue
+                    if not record['_id'] == _id: continue
                     id = record['_id']
                     print(f'processing: {id}')
                     old_without_minus = model.remove_prefix(record['old'])
@@ -127,7 +127,15 @@ def main(_id):
                             if definition_name:
                                 exist_name = next((call[1] for call in calls if call[1] == name), None)
                                 if exist_name: continue #如果已经存在该函数的调用关系，则跳过
-                                calls.append((definition_name['caller'], name, definition_name['text']))
+                                result['prompt_for_context'] = model.prompt_for_context(definition_name['text'])
+                                _, context = model.get_model_response(result['prompt_for_context'])
+                                result["prompt_for_context"] = result["prompt_for_context"].split('\n')
+                                signature_index = context.find("Signature and Parameters")
+                                if signature_index != -1:
+                                    definition_name["context"] = context[signature_index:]
+                                else:
+                                    definition_name["context"] = context
+                                calls.append((definition_name['caller'], name, definition_name['text'], definition_name['context']))
                                 flag_for_context_change = True
                                 break
                         #调整result的格式以方便阅读
@@ -157,4 +165,4 @@ def main(_id):
             print(f"All {len(new_records)} records processed")
         f0.write('\n]')
 if __name__ == "__main__":
-    main(0)
+    main(-194)

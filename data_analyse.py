@@ -8,10 +8,16 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
 
     score = [[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0],],[0,[0,0,0,0]],[0,[0,0,0,0]]]
     score2 = [0,0,0,0]
-    
+    num = 0
+    ids = []
     for record in records:
+        #方便查看结果
+        record["code_diff"] = "Omit"
+        record["context"] = "Omit"
+        
         results = record['results']
-        if not record["_id"] > 0 : continue
+        # if not record["_id"] > 0 : continue
+        # if record["_id"] > 0 : continue
         if len(results) == 0: continue
         score2[0] += record["gpt_bleu"]
         score2[1] += record["gpt_bleu_trim"]
@@ -19,6 +25,7 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
         score2[3] += record["llama_bleu_trim"]
 
         turn = -1
+        
 
         # if len(results) == 1: continue
         for result in results:
@@ -34,13 +41,20 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
                 score[turn][1][1] += result["em_trim"]
                 score[turn][1][2] += result["bleu"]
                 score[turn][1][3] += result["bleu_trim"]
+            
+            if turn == 1 and result["bleu_trim"] < results[0]["bleu_trim"]:
+                num += 1
+                if results[0]["bleu_trim"] - result["bleu_trim"] > 30:
+                    ids.append(record["_id"])
+            
             # if results[0]["bleu_trim"] > 50 and result["bleu_trim"] < 50:
-            #     print(f"id:{record['_id']};turn:{turn+1};bleu_trim:{result['bleu_trim']}")
+            if results[0]["bleu_trim"] - result["bleu_trim"] > 30:
+                print(f"id:{record['_id']};turn:{turn+1};bleu_trim:{result['bleu_trim']}")
 
             # if result_json.find("need more information?\": \"False") != -1:
             #     break
             
-            
+        
         if turn == -1: continue
         # result = results[-1]
         # for i in range(len(results), 6):
@@ -52,7 +66,7 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
             score[i][1][2] += result["bleu"]
             score[i][1][3] += result["bleu_trim"]
 
-        
+    print(f"num:{num}")    
     for i in range(6):
         count = score[0][0]
         if count != 0:
@@ -60,6 +74,9 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
     count = len(records)
     # print(f"total count:{count}; gpt_bleu:{score2[0]/count}; gpt_bleu_trim:{score2[1]/count}; llama_bleu:{score2[2]/count}; llama_bleu_trim:{score2[3]/count}")
     
+    # with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_negative_30.json', 'w') as f1:
+    #     records2 = [record for record in records if record["_id"] in ids]
+    #     f1.write(json.dumps(records2, indent=4))
 
 # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test_with_llama_all.json', 'r') as f:
 # # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new.json', 'r') as f:

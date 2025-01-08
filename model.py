@@ -248,9 +248,9 @@ def prompt_for_instruction(old_without_minus, review, calls):
                         concise_callee_text += callee_text_line + "\n"
             if caller == callee or caller == "default_function": 
                 if len(callee_text_list) > 20:
-                    prompt += f"The concise definition of \n{callee} is:\n```\n{concise_callee_text}\n``` "
+                    prompt += f"\nThe concise definition of \n{callee} is:\n```\n{concise_callee_text}\n``` "
                 else:
-                    prompt += f"\n{callee} is defined as:\n```\n{callee_text}\n``"
+                    prompt += f"\n{callee} is defined as:\n```\n{callee_text}\n```"
             else :
                 if len(callee_text_list) > 20:
                     prompt += f"\n{caller} calls {callee}, and the concise definition of {callee} is:\n```\n{concise_callee_text}\n``` "
@@ -281,32 +281,42 @@ def prompt_for_refinement(old_without_minus, review, calls):
                 for callee_text_line in callee_text_list[1:]:
                     if callee_text_line.find("def") != -1 :
                         concise_callee_text += callee_text_line + "\n"
+            match = re.match(r'^\s*def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)\s*:.*$', callee_text_list[0])
+            signature = f"{match.group(1)}({match.group(2)})" if match else callee
+            main_purpose = callee_context.split('Summary:')
+            main_purpose = main_purpose[1].strip() if len(main_purpose) > 1 else callee_context
+            
             if caller == callee or caller == "default_function": 
                 # if len(callee_text_list) > 20:
                 #     prompt += f"\nThe concise definition of {caller} is:\n```\n{concise_callee_text}\n``` "
                 # else:
                 #     prompt += f"\n{caller} is defined as:\n```\n{callee_text}\n```"
-                prompt += f"The detail information of {caller} is: \n{callee_context}"
+                prompt += f"The detail information of {signature} is: \n{main_purpose}"
             else :
                 # if len(callee_text_list) > 20:
                 #     prompt += f"\n{caller} calls {callee}, and the concise definition of {callee} is:\n```\n{concise_callee_text}\n``` "
                 # else:
                 #     prompt += f"\n{caller} calls {callee} which is defined as:\n```\n{callee_text}\n```"
-                prompt += f"\n{caller} calls {callee}, and the detail information of {callee} is: \n{callee_context}"
+                prompt += f"\n{caller} calls {signature}, and the detail information of {signature} is: \n{main_purpose}"
     prompt += "\nPlease generate the revised code according to the review. " \
               "Please ensure that the revised code follows the original code format" \
               " and comments, unless it is explicitly required by the review."
     if len(calls) > 0:
+        line_start = old_without_minus.split("\n")[0]
+        if line_start.strip() == "": line_start = old_without_minus.split("\n")[1]
         line_end = old_without_minus.split("\n")[-1]
-        prompt += f"Specifically,if not required by the review, your code should end with:{line_end}"
+        prompt += f"Specifically,if not required by the review, your code should start with:\"{line_start}\" and end with:\"{line_end}\""
     return prompt
 
 def prompt_for_context(text):
     prompt = ""
-    prompt += "Try to summarize the class or function in following text, your summary should include the"\
-              " function signature, parameters, return type, and main purpose with no more than 100 words."\
-              "format your response as:\nSignature and Parameters: <function_signature>\nReturn Type:"\
-              " <return_type>\nMain Purpose: <purpose>\n"
+    # prompt += "Try to summarize the class or function about the following text, your summary should include the"\
+    #           " function signature, parameters, return type, and main purpose with no more than 100 words."\
+    #           "format your response as:\nSignature and Parameters: <function_signature>\nReturn Type:"\
+    #           " <return_type>\nMain Purpose: <purpose>\n"
+    prompt += "Try to summarize the class or function about the following text, your summary should include at least"\
+              " the return type and main purpose with no more than 100 words."\
+              "format your response as Summary: <Your Summary>\n"
     prompt += "```\n{}\n```\n".format(text)
     return prompt
 

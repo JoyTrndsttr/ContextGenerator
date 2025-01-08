@@ -130,11 +130,12 @@ def main(_id):
                                 result['prompt_for_context'] = model.prompt_for_context(definition_name['text'])
                                 _, context = model.get_model_response(result['prompt_for_context'])
                                 result["prompt_for_context"] = result["prompt_for_context"].split('\n')
-                                signature_index = context.find("Signature and Parameters")
-                                if signature_index != -1:
-                                    definition_name["context"] = context[signature_index:]
-                                else:
-                                    definition_name["context"] = context
+                                # signature_index = context.find("Signature and Parameters")
+                                # if signature_index != -1:
+                                #     definition_name["context"] = context[signature_index:]
+                                # else:
+                                #     definition_name["context"] = context
+                                definition_name["context"] = context
                                 calls.append((definition_name['caller'], name, definition_name['text'], definition_name['context']))
                                 flag_for_context_change = True
                                 break
@@ -165,4 +166,4 @@ def main(_id):
             print(f"All {len(new_records)} records processed")
         f0.write('\n]')
 if __name__ == "__main__":
-    main(-194)
+    main(-4545)

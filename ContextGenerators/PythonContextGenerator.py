@@ -72,7 +72,8 @@ class PythonContextGenerator:
                 file_source_code = f.read().split('\n')
                 start = definition.line - 1
                 end  = start + 1
-                while end<len(file_source_code)-2 and not (count_indent(file_source_code[start])==count_indent(file_source_code[end]) and not file_source_code[end]==''):
+                # while end<len(file_source_code)-2 and not (count_indent(file_source_code[start])==count_indent(file_source_code[end]) and not file_source_code[end]==''):
+                while end<len(file_source_code)-2 and (count_indent(file_source_code[start]) < count_indent(file_source_code[end]) or file_source_code[end]==''):
                     end += 1
                 for i in range(start, end):
                     text.append(file_source_code[i])

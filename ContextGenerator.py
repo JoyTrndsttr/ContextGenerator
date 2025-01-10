@@ -35,8 +35,8 @@ def get_db_info():
 # 主函数
 def main(_id):
     # ids = ErrorProcess.error_ids2
-    # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test_with_llama_all.json', 'w') as f0:
-    with open('/mnt/ssd2/wangke/CR_data/dataset/test.json', 'w') as f0:
+    with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_all_3.json', 'w') as f0:
+    # with open('/mnt/ssd2/wangke/CR_data/dataset/test.json', 'w') as f0:
         f0.write('[\n')
         first_record = True
         with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json', 'r') as f:
@@ -45,7 +45,7 @@ def main(_id):
             for record in records:
                 try:
                     # if not record['_id'] > 0 : continue
-                    if not record['_id'] == _id: continue
+                    # if not record['_id'] == _id: continue
                     id = record['_id']
                     print(f'processing: {id}')
                     old_without_minus = model.remove_prefix(record['old'])
@@ -67,16 +67,18 @@ def main(_id):
                                 raise Exception(f'获取仓库在commit提交前的状态失败')
                     
                     #ReAct框架 
-                    turn, flag_for_more_info, flag_for_context_change = 0, True, True
+                    turn, flag_for_context_change, reason_for_name_selection = 0, True, ""
                     
                     languageContextGenerator = LanguageContextGenerator(id)
                     if not languageContextGenerator: return None
                     contextGenerator = languageContextGenerator.context_generator
+                    review_info = languageContextGenerator.comment
+
                     calls = [] #元组格式，（调用的函数，被调用的函数，被调用函数的实现）
                     results = [] #存储每一个turn的结果
                     name = "" #存储要检索的函数名
 
-                    while turn < 6 and flag_for_more_info and flag_for_context_change:
+                    while turn < 6 and flag_for_context_change:
                         turn += 1
                         print(f"turn {turn}")
                         if name: contextGenerator.updateSource(name)
@@ -87,7 +89,7 @@ def main(_id):
                         # 第二步：根据context、old_code和review生成new_code，并评估结果（这里放前面是要不加context先评估一次）
                         for i in range(max_attempts):
                             #TODO:需要更改prompt的长度，设置限制
-                            result["prompt_for_refinement"] = model.prompt_for_refinement(old_without_minus, record["review"], calls)
+                            result["prompt_for_refinement"] = model.prompt_for_refinement(old_without_minus, record["review"], calls, reason_for_name_selection, turn, review_info)
                             new_code, answer = model.get_model_response(result["prompt_for_refinement"])
                             if not new_code: continue
                             new_code_lines = new_code.split('\n')
@@ -112,33 +114,35 @@ def main(_id):
                         # 第一步：判断是否要继续寻找information，给出要查找的函数名
                         flag_for_context_change = False    #用于判断模型有没有给出有效的函数名以继续查找context
                         for i in range(max_attempts):
-                            result["prompt_for_instruction"] = model.prompt_for_instruction(old_without_minus, record["review"], calls)
-                            answer_code, result["result_json"] = model.get_model_response(result["prompt_for_instruction"])
-                            if not result["result_json"]: continue
-                            # flag = re.findall(r'"need more information\?": "(.*?)",', result_json)[0]
-                            # if not flag: continue
-                            # flag = False if flag == "False" else True
+                            result["prompt_for_instruction"] = model.prompt_for_instruction(old_without_minus, record["review"], calls, turn, review_info)
+                            _, result["result_json"] = model.get_model_response(result["prompt_for_instruction"])
+                            if not result["result_json"]: 
+                                result["flag_for_context_change"] = "case1:Unable to get the prompt_for_instruction result_json"
+                                continue
+                            if not reason_for_name_selection:
+                                reason_for_name_selection = re.findall(r'"reason": "(.*?)",', result["result_json"])
                             name = re.findall(r'"function_name": "(.*?)",', result["result_json"])
-                            if len(name) == 0: continue
+                            if len(name) == 0:
+                                result["flag_for_context_change"] = "case2:Unable to extract function name from the prompt_for_instruction result using regular expressions"
+                                continue
                             name = name[0]
                             #在definitions中查找name，并存入函数调用关系以及被调用函数的实现
                             
                             definition_name = next((definition for definition in definitions if definition['name'] == name), None)
                             if definition_name:
                                 exist_name = next((call[1] for call in calls if call[1] == name), None)
-                                if exist_name: continue #如果已经存在该函数的调用关系，则跳过
+                                if exist_name: #如果已经存在该函数的调用关系，则跳过
+                                    result["flag_for_context_change"] = "case3:The function name has already existed"
+                                    continue 
                                 result['prompt_for_context'] = model.prompt_for_context(definition_name['text'])
                                 _, context = model.get_model_response(result['prompt_for_context'])
                                 result["prompt_for_context"] = result["prompt_for_context"].split('\n')
-                                # signature_index = context.find("Signature and Parameters")
-                                # if signature_index != -1:
-                                #     definition_name["context"] = context[signature_index:]
-                                # else:
-                                #     definition_name["context"] = context
                                 definition_name["context"] = context
                                 calls.append((definition_name['caller'], name, definition_name['text'], definition_name['context']))
                                 flag_for_context_change = True
                                 break
+                            else:
+                                result["flag_for_context_change"] = "case4:Unable to find the definition of the function name"
                         #调整result的格式以方便阅读
                         result["prompt_for_instruction"] = result["prompt_for_instruction"].split('\n')
                         result["prompt_for_refinement"] = result["prompt_for_refinement"].split('\n')
@@ -166,4 +170,4 @@ def main(_id):
             print(f"All {len(new_records)} records processed")
         f0.write('\n]')
 if __name__ == "__main__":
-    main(-4545)
+    main(0)

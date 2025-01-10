@@ -8,6 +8,12 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
 
     score = [[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0],],[0,[0,0,0,0]],[0,[0,0,0,0]]]
     score2 = [0,0,0,0]
+    abort_analysis_result = {
+        "case1:Unable to get the prompt_for_instruction result_json": 0,
+        "case2:Unable to extract function name from the prompt_for_instruction result using regular expressions": 0,
+        "case3:The function name has already existed":0,
+        "case4:Unable to find the definition of the function name":0
+    }
     num = 0
     ids = []
     for record in records:
@@ -31,6 +37,10 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
         for result in results:
             # result_json = '\n'.join(result["result_json"])
             # if result_json.find("need more information?\": \"True") == -1: break
+
+            abort_analysis = result.get("flag_for_context_change", None)
+            if abort_analysis:
+                abort_analysis_result[abort_analysis] += 1
             
             if not result.get("new_code"): continue
             turn = result['turn'] - 1
@@ -72,11 +82,17 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
         if count != 0:
             print(f"turn:{i+1}; count:{score[i][0]}; em:{score[i][1][0]/count}; em_trim:{score[i][1][1]/count};  bleu:{score[i][1][2]/count}; bleu_trim:{score[i][1][3]/count}")
     count = len(records)
+
+    for key, value in abort_analysis_result.items():
+        print(f"{key}:{value}")
     # print(f"total count:{count}; gpt_bleu:{score2[0]/count}; gpt_bleu_trim:{score2[1]/count}; llama_bleu:{score2[2]/count}; llama_bleu_trim:{score2[3]/count}")
     
     # with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_negative_30.json', 'w') as f1:
     #     records2 = [record for record in records if record["_id"] in ids]
     #     f1.write(json.dumps(records2, indent=4))
+    with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'w') as f1:
+        # records2 = [record for record in records if record["_id"] in ids]
+        f1.write(json.dumps(records, indent=4))
 
 # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test_with_llama_all.json', 'r') as f:
 # # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new.json', 'r') as f:

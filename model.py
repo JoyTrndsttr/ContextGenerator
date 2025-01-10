@@ -225,7 +225,7 @@ def generate_new_prompt5_CRN(old_without_minus, review, context):
 #     prompt += "\nIf you need more information to generate the new code, provide the name from the old code and explain why you chose it. Format your response as a JSON object:```{ 'Need more information?': <True/False>, 'function_name': '<function_name>', 'reason': '<reason>' }```"
 #     return prompt
 
-def prompt_for_instruction(old_without_minus, review, calls):
+def prompt_for_instruction(old_without_minus, review, calls, turn, review_info):
     prompt = "As a developer, your pull request receives a reviewer's comment on " \
               "a specific piece of code that requires a change.In order to make " \
               "changes based on the review,you need to refer back to the original code. " \
@@ -233,7 +233,12 @@ def prompt_for_instruction(old_without_minus, review, calls):
               "like to refer to.\n"
     prompt += "The old code being referred to in the hunk of code changes is:\n"
     prompt += "```\n{}\n```\n".format(old_without_minus)
-    prompt += "The code review for this code is:\n"
+    if not review_info or not review_info.get("review_position_line", None):
+        prompt += "The code review for this code is:\n"
+    else:
+        if review_info.get("review_hunk_start_line", None):
+            prompt += f"The reviewer commented on the code from line '{review_info['review_hunk_start_line']}' to line '{review_info['review_position_line']}':\n"
+        else: prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
     prompt += review
     if len(calls) > 0:
         prompt += "\nBased on the review, you checked the source code and find that :"
@@ -256,22 +261,28 @@ def prompt_for_instruction(old_without_minus, review, calls):
                     prompt += f"\n{caller} calls {callee}, and the concise definition of {callee} is:\n```\n{concise_callee_text}\n``` "
                 else:
                     prompt += f"\n{caller} calls {callee} which is defined as:\n```\n{callee_text}\n```"
-    prompt += "\nIf you need more information to generate the new code, provide the name appears " \
-              "in the source code and explain why you chose it. Format your response" \
-              " as a JSON object:```{ \"need more information?\": \"<True/False>\", \"function_name\":" \
-              " \"<function_name>\", \"reason\": \"<reason>\" }```"
+    prompt += "\nPlease provide the name appears in the source code and explain why you chose it. Format your response"\
+              " as a JSON object:```{ \"function_name\": \"<function_name>\", \"reason\": \"<reason>\" }```"
     return prompt
 
-def prompt_for_refinement(old_without_minus, review, calls):
+def prompt_for_refinement(old_without_minus, review, calls, reason, turn, review_info):
     prompt = ""
     prompt += "As a developer, imagine you've submitted a pull request and" \
               " your team leader requests you to make a change to a piece of code." \
               " The old code being referred to in the hunk of code changes is:\n"
     prompt += "```\n{}\n```\n".format(old_without_minus)
-    prompt += "There is the code review for this code:\n"
+    if turn == 1 or not review_info or not review_info.get("review_position_line", None):
+        prompt += "The code review for this code is:\n"
+    else:
+        if review_info.get("review_hunk_start_line", None):
+            prompt += f"The reviewer commented on the code from line '{review_info['review_hunk_start_line']}' to line '{review_info['review_position_line']}':\n"
+        else: prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
     prompt += review
     if len(calls) > 0:
-        prompt += "\nBased on the review, you checked the source code and find that :"
+        if not reason:
+            prompt += "\nBased on the review, you checked the source code and find that :"
+        else:
+            prompt += f"\nBased on the review, you checked the source code and find that:{reason}."
         for call in calls:
             caller, callee, callee_text, callee_context = call
             callee_text_list = callee_text.split('\n')
@@ -291,7 +302,7 @@ def prompt_for_refinement(old_without_minus, review, calls):
                 #     prompt += f"\nThe concise definition of {caller} is:\n```\n{concise_callee_text}\n``` "
                 # else:
                 #     prompt += f"\n{caller} is defined as:\n```\n{callee_text}\n```"
-                prompt += f"The detail information of {signature} is: \n{main_purpose}"
+                prompt += f"\nThe detail information of {signature} is: \n{main_purpose}"
             else :
                 # if len(callee_text_list) > 20:
                 #     prompt += f"\n{caller} calls {callee}, and the concise definition of {callee} is:\n```\n{concise_callee_text}\n``` "

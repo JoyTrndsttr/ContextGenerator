@@ -6,6 +6,7 @@ import os
 import json
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry # type: ignore
+import re
 
 # GitHub 个人访问令牌
 # GITHUB_TOKEN = json.load(open("settings.json", encoding='utf-8'))["GITHUB_TOKEN"]
@@ -62,6 +63,28 @@ def get_commit_info(repo, commit_sha):
         link_header,commit_info = get_commit_info_by_page(url)
         commit_infos['files'].extend(commit_info['files'])
     return commit_infos
+
+# 使用 GitHub API 获取评论信息
+def get_comment_info(repo, pull, review):
+    def normalize_text(text):
+        text = re.sub(r'\W+','', text)
+        return text
+
+    review_url = f"https://api.github.com/repos/{repo}/pulls/{pull}/comments"
+    headers = {'Authorization': f'token {GITHUB_TOKEN}'}
+    response = requests_retry_session().get(review_url, headers=headers, timeout=10)
+    response.raise_for_status()
+    comments = response.json()
+    for comment in comments:
+        if normalize_text(comment['body']) == normalize_text(review):
+            return comment,comment['url']
+
+def get_comment(review_url):
+    headers = {'Authorization': f'token {GITHUB_TOKEN}'}
+    response = requests_retry_session().get(review_url, headers=headers, timeout=10)
+    response.raise_for_status()
+    comment = response.json()
+    return comment
 
 # 应用文件的补丁
 def apply_patch(repo_path, file_info):
@@ -183,9 +206,24 @@ def generate_path_code_diff_to_jsonfile(id , file_path):
     
     record = get_info_from_jsonfile(file_path, id)
     if record:
-        record_id, repo, commit_url = record["_id"], record["repo"], record["commit_url"]
+        record_id, repo, commit_url, review = record["_id"], record["repo"], record["commit_url"], record["review"]
         repo_path = f"/mnt/ssd2/wangke/CR_data/repo/{repo.split('/')[1]}"
         commit_hash = commit_url.split('/')[-1]
+        if record_id <= 0:
+            pull = commit_url.split('pull/')[1].split('/')[0]
+
+        review_url = record.get('review_url', None)
+        if review_url: comment = get_comment(review_url)
+        else:comment, review_url = get_comment_info(repo, pull, review)
+        if comment:
+            comment_info = {
+                "original_position": comment["original_position"],
+                "original_start_line": comment["original_start_line"],
+                "original_line": comment["original_line"],
+                "diff_hunk": comment["diff_hunk"],
+            }
+        else:
+            comment_info = None
         
         #获取commit_hash的parents_commit_hash，将项目回溯到parents_commit_hash的状态
         parents_commit_hash = get_commit_info(repo, commit_hash).get('parents', [])[0]['sha']
@@ -208,6 +246,8 @@ def generate_path_code_diff_to_jsonfile(id , file_path):
                     if record['_id'] == id:
                         record['path'] = paths_str
                         record['code_diff'] = code_diff_str
+                        record['comment'] = comment_info
+                        record['review_url'] = review_url
                         with open(file_path, 'w', encoding='utf-8') as file:
                             json.dump(records, file, indent=4)
                         print(f"Updated record {record_id} in {file_path}")
@@ -226,4 +266,4 @@ def main(id):
     return generate_path_code_diff_to_jsonfile(id, '/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json')
     
 if __name__ == "__main__":
-    main(4)
+    main(0)

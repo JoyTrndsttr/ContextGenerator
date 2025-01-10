@@ -13,6 +13,8 @@ import tree_sitter_java as tsjava
 import tree_sitter_javascript as tsjs
 import tree_sitter_python as tspython
 import tree_sitter_ruby as tsruby
+import re
+import traceback
 # from ContextGenerators import PythonContextGenerators
 # from ContextGenerators import JavaContextGenerators
 from ContextGenerators.PythonContextGenerator import PythonContextGenerator
@@ -44,7 +46,7 @@ class LanguageContextGenerator:
                 if record['_id'] == id:
                     self.record = record
         if not self.record: return None
-        self.record_id, self.repo_name, self.paths, self.code_diffs, self.old = self.record['_id'], self.record['repo'], self.record['path'], self.record['code_diff'] , self.record['old']
+        self.record_id, self.repo_name, self.paths, self.code_diffs, self.old, self.comment = self.record['_id'], self.record['repo'], self.record['path'], self.record['code_diff'] , self.record['old'], self.record['comment']
         self.code_diffs = json.loads(self.code_diffs)
         self.repo_path = os.path.join(self.repo_base_path, self.repo_name.split('/')[1])
 
@@ -57,6 +59,27 @@ class LanguageContextGenerator:
             if match: break
         if not match or not os.path.exists(self.file_path): return None
         self.code_diff = code_diff
+
+        #获取评论在old code中指向的位置
+        if self.comment:
+            diff_hunk_lines = self.comment["diff_hunk"].split('\n')
+            try:
+                start = int(re.search(r'(\d+)', diff_hunk_lines[0]).group(1))
+                if self.comment["original_start_line"]:
+                    self.comment["review_hunk_start_line"] = diff_hunk_lines[self.comment["original_start_line"]-start+1][1:] #加1是因为第一行是code_diff_hunk的prefix
+                index = len(diff_hunk_lines)-1 # 指向review_position_line
+                # if self.comment["original_position"] > len(diff_hunk_lines):
+                #     if self.comment["original_line"]: index = self.comment["original_line"]-start+1
+                #     else: raise Exception("original_position is out of range and original_line is not provided")
+                # else: index = self.comment["original_position"]
+                for i in range(index, -1, -1):
+                    line = diff_hunk_lines[i][1:]
+                    if line:
+                        self.comment["review_position_line"] = line
+                        break
+            except Exception as e:
+                print(f"Error finding start position of comment in old code: {e}")
+                traceback.print_exc()
 
         #获取文件后缀并加载对应的语言解析器和上下文生成器
         self.file_extension = os.path.splitext(self.file_path)[1]

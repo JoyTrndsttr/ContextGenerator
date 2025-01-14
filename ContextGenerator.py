@@ -77,6 +77,7 @@ def main(_id):
                     calls = [] #元组格式，（调用的函数，被调用的函数，被调用函数的实现）
                     results = [] #存储每一个turn的结果
                     name = "" #存储要检索的函数名
+                    name_list = [] #存储所有函数名
 
                     while turn < 6 and flag_for_context_change:
                         turn += 1
@@ -114,7 +115,7 @@ def main(_id):
                         # 第一步：判断是否要继续寻找information，给出要查找的函数名
                         flag_for_context_change = False    #用于判断模型有没有给出有效的函数名以继续查找context
                         for i in range(max_attempts):
-                            result["prompt_for_instruction"] = model.prompt_for_instruction(old_without_minus, record["review"], calls, turn, review_info)
+                            result["prompt_for_instruction"] = model.prompt_for_instruction(old_without_minus, record["review"], calls, turn, review_info, name_list)
                             _, result["result_json"] = model.get_model_response(result["prompt_for_instruction"])
                             if not result["result_json"]: 
                                 result["flag_for_context_change"] = "case1:Unable to get the prompt_for_instruction result_json"
@@ -126,6 +127,7 @@ def main(_id):
                                 result["flag_for_context_change"] = "case2:Unable to extract function name from the prompt_for_instruction result using regular expressions"
                                 continue
                             name = name[0]
+                            if name not in name_list: name_list.append(name)
                             #在definitions中查找name，并存入函数调用关系以及被调用函数的实现
                             
                             definition_name = next((definition for definition in definitions if definition['name'] == name), None)

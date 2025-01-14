@@ -225,7 +225,7 @@ def generate_new_prompt5_CRN(old_without_minus, review, context):
 #     prompt += "\nIf you need more information to generate the new code, provide the name from the old code and explain why you chose it. Format your response as a JSON object:```{ 'Need more information?': <True/False>, 'function_name': '<function_name>', 'reason': '<reason>' }```"
 #     return prompt
 
-def prompt_for_instruction(old_without_minus, review, calls, turn, review_info):
+def prompt_for_instruction(old_without_minus, review, calls, turn, review_info, name_list):
     prompt = "As a developer, your pull request receives a reviewer's comment on " \
               "a specific piece of code that requires a change.In order to make " \
               "changes based on the review,you need to refer back to the original code. " \
@@ -261,7 +261,12 @@ def prompt_for_instruction(old_without_minus, review, calls, turn, review_info):
                     prompt += f"\n{caller} calls {callee}, and the concise definition of {callee} is:\n```\n{concise_callee_text}\n``` "
                 else:
                     prompt += f"\n{caller} calls {callee} which is defined as:\n```\n{callee_text}\n```"
-    prompt += "\nPlease provide the name appears in the source code and explain why you chose it. Format your response"\
+    if len(name_list) > 0:
+        name_str = "Notify the following functions have been checked:"
+        for name in name_list:
+            name_str += f"{name}, "
+        prompt += f"\n{name_str[:-2]}"
+    prompt += "\nPlease provide the name appears in the source code that have not yet been checked  and explain why you chose it. Format your response"\
               " as a JSON object:```{ \"function_name\": \"<function_name>\", \"reason\": \"<reason>\" }```"
     return prompt
 

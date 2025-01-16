@@ -270,13 +270,13 @@ def prompt_for_instruction(old_without_minus, review, calls, turn, review_info, 
               " as a JSON object:```{ \"function_name\": \"<function_name>\", \"reason\": \"<reason>\" }```"
     return prompt
 
-def prompt_for_refinement(old_without_minus, review, calls, reason, turn, review_info):
+def prompt_for_refinement(old_without_minus, review, calls, reason, turn, review_info, with_summary_or_code, with_consice_review_position):
     prompt = ""
     prompt += "As a developer, imagine you've submitted a pull request and" \
               " your team leader requests you to make a change to a piece of code." \
               " The old code being referred to in the hunk of code changes is:\n"
     prompt += "```\n{}\n```\n".format(old_without_minus)
-    if turn == 1 or not review_info or not review_info.get("review_position_line", None):
+    if not with_consice_review_position or not review_info or not review_info.get("review_position_line", None):
         prompt += "The code review for this code is:\n"
     else:
         if review_info.get("review_hunk_start_line", None):
@@ -292,27 +292,26 @@ def prompt_for_refinement(old_without_minus, review, calls, reason, turn, review
             caller, callee, callee_text, callee_context = call
             callee_text_list = callee_text.split('\n')
             if len(callee_text_list) > 20:
-                concise_callee_text = ""
-                concise_callee_text += callee_text_list[0] + "\n"
-                for callee_text_line in callee_text_list[1:]:
-                    if callee_text_line.find("def") != -1 :
-                        concise_callee_text += callee_text_line + "\n"
+                concise_callee_text = '\n'.join(callee_text_list[:20])
             match = re.match(r'^\s*def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)\s*:.*$', callee_text_list[0])
             signature = f"{match.group(1)}({match.group(2)})" if match else callee
             main_purpose = callee_context.split('Summary:')
             main_purpose = main_purpose[1].strip() if len(main_purpose) > 1 else callee_context
             
             if caller == callee or caller == "default_function": 
-                # if len(callee_text_list) > 20:
-                #     prompt += f"\nThe concise definition of {caller} is:\n```\n{concise_callee_text}\n``` "
-                # else:
-                #     prompt += f"\n{caller} is defined as:\n```\n{callee_text}\n```"
-                prompt += f"\nThe detail information of {signature} is: \n{main_purpose}"
+                if with_summary_or_code == 'code':
+                    if len(callee_text_list) > 20:
+                        prompt += f"\nThe first 20 lines of {signature} are implemented as follows:\n```\n{concise_callee_text}\n``` "
+                    else:
+                        prompt += f"\n{signature} is defined as:\n```\n{callee_text}\n```"
+                elif with_summary_or_code =='summary':
+                    prompt += f"\nThe detail information of {signature} is: \n{main_purpose}"
             else :
-                # if len(callee_text_list) > 20:
-                #     prompt += f"\n{caller} calls {callee}, and the concise definition of {callee} is:\n```\n{concise_callee_text}\n``` "
-                # else:
-                #     prompt += f"\n{caller} calls {callee} which is defined as:\n```\n{callee_text}\n```"
+                if with_summary_or_code == 'code':
+                    if len(callee_text_list) > 20:
+                        prompt += f"\n{caller} calls {signature}, and the first 20 lines of {signature} are implemented as follows:\n```\n{concise_callee_text}\n``` "
+                    else:
+                        prompt += f"\n{caller} calls {signature} which is defined as:\n```\n{callee_text}\n```"
                 prompt += f"\n{caller} calls {signature}, and the detail information of {signature} is: \n{main_purpose}"
     prompt += "\nPlease generate the revised code according to the review. " \
               "Please ensure that the revised code follows the original code format" \

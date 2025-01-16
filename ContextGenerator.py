@@ -8,6 +8,12 @@ import json
 import model
 import re
 import traceback
+# import concurrent.futures
+import multiprocessing
+import pathos.multiprocessing as mp
+# from pathos.multiprocessing import ProcessingPool as Pool
+
+# import functools
 
 # Setting up logging
 # logging.basicConfig(filename='log.txt', level=logging.ERROR, format='%(asctime)s:%(levelname)s:%(message)s')
@@ -35,7 +41,7 @@ def get_db_info():
 # 主函数
 def main(_id):
     # ids = ErrorProcess.error_ids2
-    with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_all_3.json', 'w') as f0:
+    with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_all_4.json', 'w') as f0:
     # with open('/mnt/ssd2/wangke/CR_data/dataset/test.json', 'w') as f0:
         f0.write('[\n')
         first_record = True
@@ -84,33 +90,83 @@ def main(_id):
                         print(f"turn {turn}")
                         if name: contextGenerator.updateSource(name)
                         definitions = contextGenerator.getContext()
-                        result = {"turn": turn, "prompt_for_refinement": "", "result_json": "", "prompt_for_instruction": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
+                        result = {"turn": turn, "result_json": "", "prompt_for_instruction": "","flag_for_context_change": "",  "ablation_results": []}
                         
                         max_attempts = 3
                         # 第二步：根据context、old_code和review生成new_code，并评估结果（这里放前面是要不加context先评估一次）
-                        for i in range(max_attempts):
-                            #TODO:需要更改prompt的长度，设置限制
-                            result["prompt_for_refinement"] = model.prompt_for_refinement(old_without_minus, record["review"], calls, reason_for_name_selection, turn, review_info)
-                            new_code, answer = model.get_model_response(result["prompt_for_refinement"])
-                            if not new_code: continue
-                            new_code_lines = new_code.split('\n')
-                            #用于去除new_code多生成的代码补全
-                            if not result["turn"] == 1: 
+                        def get_refinement_result(turn, with_summary_or_code, with_consice_review_position):
+                            max_attempts = 3
+                            for i in range(max_attempts):
+                                if with_summary_or_code == "summary":
+                                    ablation_result, _ablation_result = {"turn": turn, "prompt_for_refinement_with_summary": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}, {"turn": turn, "prompt_for_refinement_with_summary": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
+                                    prompt_for_refinement_with_summary = model.prompt_for_refinement(old_without_minus, record["review"], calls, reason_for_name_selection, turn, review_info, "summary", with_consice_review_position)
+                                    new_code, answer = model.get_model_response(prompt_for_refinement_with_summary)
+                                    ablation_result["prompt_for_refinement_with_summary"], _ablation_result["prompt_for_refinement_with_summary"] = prompt_for_refinement_with_summary.split('\n'), prompt_for_refinement_with_summary.split('\n')
+                                elif with_summary_or_code == "code":
+                                    ablation_result, _ablation_result = {"turn": turn, "prompt_for_refinement_with_code": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}, {"turn": turn, "prompt_for_refinement_with_code": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
+                                    prompt_for_refinement_with_code = model.prompt_for_refinement(old_without_minus, record["review"], calls, reason_for_name_selection, turn, review_info, "code", with_consice_review_position)
+                                    new_code, answer = model.get_model_response(prompt_for_refinement_with_code)
+                                    ablation_result["prompt_for_refinement_with_code"], _ablation_result["prompt_for_refinement_with_code"] = prompt_for_refinement_with_code.split('\n'), prompt_for_refinement_with_code.split('\n')
+                                else: return None, None
+                                if not new_code: continue
+                                
+                                new_code_lines = new_code.split('\n')
+                                #用于去除new_code多生成的代码补全
                                 end_line = record["old"].split('\n')[-1][1:]
                                 index = -1
                                 for i, line in enumerate(new_code_lines):
                                     if line.strip() == end_line.strip():
                                         index = i
                                 if index != -1:
-                                    new_code_lines = new_code_lines[:index+1]
+                                    new_code_lines_clipped = new_code_lines[:index+1]
                                     print(f"已在new_code中截取到{end_line}")
                                 else: 
+                                    new_code_lines_clipped = new_code_lines
                                     print(f"没有在new_code中找到{end_line}")
-                            em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(new, new_code)
-                            if bleu + bleu_trim > result["bleu"] + result["bleu_trim"]: #取最好值
-                                result["em"], result["em_trim"], result["bleu"], result["bleu_trim"] = em, em_trim, bleu, bleu_trim
-                                result["new_code"] = new_code_lines
-                                result["new_code_groud_truth"] = new.split('\n')
+                                
+                                em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(new, new_code)
+                                if bleu + bleu_trim > ablation_result["bleu"] + ablation_result["bleu_trim"]: #取最好值
+                                    ablation_result["em"], ablation_result["em_trim"], ablation_result["bleu"], ablation_result["bleu_trim"] = em, em_trim, bleu, bleu_trim
+                                    ablation_result["new_code"] = new_code_lines
+                                    ablation_result["new_code_groud_truth"] = new.split('\n')
+                                em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(new, '\n'.join(new_code_lines_clipped))
+                                if bleu + bleu_trim > _ablation_result["bleu"] + _ablation_result["bleu_trim"]: #取最好值
+                                    _ablation_result["em"], _ablation_result["em_trim"], _ablation_result["bleu"], _ablation_result["bleu_trim"] = em, em_trim, bleu, bleu_trim
+                                    _ablation_result["new_code_clipped"] = new_code_lines_clipped
+                                    _ablation_result["new_code_groud_truth"] = new.split('\n')
+                            return ablation_result, _ablation_result
+                        
+                        def execute_refinement_result(args):
+                            turn, type1, type2 = args
+                            return get_refinement_result(turn, type1, type2)
+                        
+                        # partial_func = functools.partial(execute_refinement_result, turn)
+                        if result["turn"] == 1:
+                            with mp.Pool() as pool:
+                                _results = pool.map(execute_refinement_result,
+                                                       [(turn, "summary", True),
+                                                        (turn, "summary", False)])
+                            ablation_result1, ablation_result2 = _results[0]
+                            ablation_result3, ablation_result4 = _results[1]
+                            # ablation_result1, ablation_result2 = get_refinement_result(turn, "summary", True)
+                            # ablation_result3, ablation_result4 = get_refinement_result(turn, "summary", False)
+                            result["ablation_results"].append([ablation_result1, ablation_result2, ablation_result3, ablation_result4])
+                        else:
+                            with mp.Pool() as pool:
+                                _results = pool.map(execute_refinement_result,
+                                                       [(turn, "summary", True),
+                                                        (turn, "code", True),
+                                                        (turn, "summary", False),
+                                                        (turn, "code", False)])
+                                ablation_result1, ablation_result2 = _results[0]
+                                ablation_result3, ablation_result4 = _results[1]
+                                ablation_result5, ablation_result6 = _results[2]
+                                ablation_result7, ablation_result8 = _results[3]
+                                # ablation_result1, ablation_result2 = get_refinement_result(turn, "summary", True)
+                                # ablation_result3, ablation_result4 = get_refinement_result(turn, "code", True)
+                                # ablation_result5, ablation_result6 = get_refinement_result(turn, "summary", False)
+                                # ablation_result7, ablation_result8 = get_refinement_result(turn, "code", False)
+                                result["ablation_results"].append([ablation_result1, ablation_result2, ablation_result3, ablation_result4, ablation_result5, ablation_result6, ablation_result7, ablation_result8])
 
                         # 第一步：判断是否要继续寻找information，给出要查找的函数名
                         flag_for_context_change = False    #用于判断模型有没有给出有效的函数名以继续查找context
@@ -147,17 +203,16 @@ def main(_id):
                                 result["flag_for_context_change"] = "case4:Unable to find the definition of the function name"
                         #调整result的格式以方便阅读
                         result["prompt_for_instruction"] = result["prompt_for_instruction"].split('\n')
-                        result["prompt_for_refinement"] = result["prompt_for_refinement"].split('\n')
                         result["result_json"] = result["result_json"].split('\n')
-                        result["new_code_groud_truth"] = record["new"].split('\n')
+                        # result["new_code_groud_truth"] = record["new"].split('\n')
                         results.append(result)
                     
                     record["results"] = results
                     record["context"] = json.dumps(definitions)
-                    record["llama_em"] = sum(result["em"] for result in results)/len(results)
-                    record["llama_em_trim"] = sum(result["em_trim"] for result in results)/len(results)
-                    record["llama_bleu"] = sum(result["bleu"] for result in results)/len(results)
-                    record["llama_bleu_trim"] = sum(result["bleu_trim"] for result in results)/len(results)
+                    # record["llama_em"] = sum(result["em"] for result in results)/len(results)
+                    # record["llama_em_trim"] = sum(result["em_trim"] for result in results)/len(results)
+                    # record["llama_bleu"] = sum(result["bleu"] for result in results)/len(results)
+                    # record["llama_bleu_trim"] = sum(result["bleu_trim"] for result in results)/len(results)
 
                     #写入文件
                     if not first_record:
@@ -172,4 +227,4 @@ def main(_id):
             print(f"All {len(new_records)} records processed")
         f0.write('\n]')
 if __name__ == "__main__":
-    main(0)
+    main(-146)

@@ -23,7 +23,7 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
         
         results = record['results']
         # if not record["_id"] > 0 : continue
-        # if record["_id"] > 0 : continue
+        if record["_id"] > 0 : continue
         if len(results) == 0: continue
         score2[0] += record["gpt_bleu"]
         score2[1] += record["gpt_bleu_trim"]
@@ -90,9 +90,9 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
     # with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_negative_30.json', 'w') as f1:
     #     records2 = [record for record in records if record["_id"] in ids]
     #     f1.write(json.dumps(records2, indent=4))
-    with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'w') as f1:
-        # records2 = [record for record in records if record["_id"] in ids]
-        f1.write(json.dumps(records, indent=4))
+    # with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'w') as f1:
+    #     # records2 = [record for record in records if record["_id"] in ids]
+    #     f1.write(json.dumps(records, indent=4))
 
 # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test_with_llama_all.json', 'r') as f:
 # # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new.json', 'r') as f:

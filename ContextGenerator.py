@@ -41,7 +41,7 @@ def get_db_info():
 # 主函数
 def main(_id):
     # ids = ErrorProcess.error_ids2
-    with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_all_4.json', 'w') as f0:
+    with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_all_5.json', 'w') as f0:
     # with open('/mnt/ssd2/wangke/CR_data/dataset/test.json', 'w') as f0:
         f0.write('[\n')
         first_record = True
@@ -52,6 +52,7 @@ def main(_id):
                 try:
                     # if not record['_id'] > 0 : continue
                     # if not record['_id'] == _id: continue
+                    if record['_id']  > -4326 and record['_id'] <= 0 : continue
                     id = record['_id']
                     print(f'processing: {id}')
                     old_without_minus = model.remove_prefix(record['old'])
@@ -94,22 +95,26 @@ def main(_id):
                         
                         max_attempts = 3
                         # 第二步：根据context、old_code和review生成new_code，并评估结果（这里放前面是要不加context先评估一次）
-                        def get_refinement_result(turn, with_summary_or_code, with_consice_review_position):
+                        def get_refinement_result(turn, with_summary_or_code, with_precise_review_position):
                             max_attempts = 3
                             for i in range(max_attempts):
-                                if with_summary_or_code == "summary":
-                                    ablation_result, _ablation_result = {"turn": turn, "prompt_for_refinement_with_summary": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}, {"turn": turn, "prompt_for_refinement_with_summary": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
-                                    prompt_for_refinement_with_summary = model.prompt_for_refinement(old_without_minus, record["review"], calls, reason_for_name_selection, turn, review_info, "summary", with_consice_review_position)
-                                    new_code, answer = model.get_model_response(prompt_for_refinement_with_summary)
-                                    ablation_result["prompt_for_refinement_with_summary"], _ablation_result["prompt_for_refinement_with_summary"] = prompt_for_refinement_with_summary.split('\n'), prompt_for_refinement_with_summary.split('\n')
-                                elif with_summary_or_code == "code":
-                                    ablation_result, _ablation_result = {"turn": turn, "prompt_for_refinement_with_code": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}, {"turn": turn, "prompt_for_refinement_with_code": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
-                                    prompt_for_refinement_with_code = model.prompt_for_refinement(old_without_minus, record["review"], calls, reason_for_name_selection, turn, review_info, "code", with_consice_review_position)
-                                    new_code, answer = model.get_model_response(prompt_for_refinement_with_code)
-                                    ablation_result["prompt_for_refinement_with_code"], _ablation_result["prompt_for_refinement_with_code"] = prompt_for_refinement_with_code.split('\n'), prompt_for_refinement_with_code.split('\n')
-                                else: return None, None
+                                for j in range(max_attempts*2):
+                                    if with_summary_or_code == "summary":
+                                        ablation_result, _ablation_result = {"turn": turn, "ablation_info": "", "prompt_for_refinement_with_summary": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}, {"turn": turn, "ablation_info": "", "prompt_for_refinement_with_summary": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
+                                        prompt_for_refinement_with_summary = model.prompt_for_refinement(old_without_minus, record["review"], calls, reason_for_name_selection, turn, review_info, "summary", with_precise_review_position)
+                                        new_code, answer = model.get_model_response(prompt_for_refinement_with_summary)
+                                        ablation_result["prompt_for_refinement_with_summary"], _ablation_result["prompt_for_refinement_with_summary"] = prompt_for_refinement_with_summary.split('\n'), prompt_for_refinement_with_summary.split('\n')
+                                    elif with_summary_or_code == "code":
+                                        ablation_result, _ablation_result = {"turn": turn, "ablation_info": "", "prompt_for_refinement_with_code": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}, {"turn": turn, "ablation_info": "", "prompt_for_refinement_with_code": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
+                                        prompt_for_refinement_with_code = model.prompt_for_refinement(old_without_minus, record["review"], calls, reason_for_name_selection, turn, review_info, "code", with_precise_review_position)
+                                        new_code, answer = model.get_model_response(prompt_for_refinement_with_code)
+                                        ablation_result["prompt_for_refinement_with_code"], _ablation_result["prompt_for_refinement_with_code"] = prompt_for_refinement_with_code.split('\n'), prompt_for_refinement_with_code.split('\n')
+                                    else: return None, None
+                                    if not new_code: 
+                                        print(f"Error attemption: 第{i+1}次尝试，第{j+1}次尝试，模型生成的new_code为空")
+                                        print(f"answer: {answer}")
+                                    if new_code: break
                                 if not new_code: continue
-                                
                                 new_code_lines = new_code.split('\n')
                                 #用于去除new_code多生成的代码补全
                                 end_line = record["old"].split('\n')[-1][1:]
@@ -146,11 +151,9 @@ def main(_id):
                                 _results = pool.map(execute_refinement_result,
                                                        [(turn, "summary", True),
                                                         (turn, "summary", False)])
-                            ablation_result1, ablation_result2 = _results[0]
-                            ablation_result3, ablation_result4 = _results[1]
-                            # ablation_result1, ablation_result2 = get_refinement_result(turn, "summary", True)
-                            # ablation_result3, ablation_result4 = get_refinement_result(turn, "summary", False)
-                            result["ablation_results"].append([ablation_result1, ablation_result2, ablation_result3, ablation_result4])
+                                ablation_result1, ablation_result2 = _results[0]
+                                ablation_result3, ablation_result4 = _results[1]
+                                result["ablation_results"] = [ablation_result1, ablation_result2, ablation_result1, ablation_result2, ablation_result3, ablation_result4, ablation_result3, ablation_result4]
                         else:
                             with mp.Pool() as pool:
                                 _results = pool.map(execute_refinement_result,
@@ -162,12 +165,21 @@ def main(_id):
                                 ablation_result3, ablation_result4 = _results[1]
                                 ablation_result5, ablation_result6 = _results[2]
                                 ablation_result7, ablation_result8 = _results[3]
-                                # ablation_result1, ablation_result2 = get_refinement_result(turn, "summary", True)
-                                # ablation_result3, ablation_result4 = get_refinement_result(turn, "code", True)
-                                # ablation_result5, ablation_result6 = get_refinement_result(turn, "summary", False)
-                                # ablation_result7, ablation_result8 = get_refinement_result(turn, "code", False)
-                                result["ablation_results"].append([ablation_result1, ablation_result2, ablation_result3, ablation_result4, ablation_result5, ablation_result6, ablation_result7, ablation_result8])
+                                result["ablation_results"] = [ablation_result1, ablation_result2, ablation_result3, ablation_result4, ablation_result5, ablation_result6, ablation_result7, ablation_result8]
+                        ablation_info = [
+                            "Summary_cut_precise",
+                            "Summary_uncut_precise",
+                            "Code_cut_precise",
+                            "Code_uncut_precise",
+                            "Summary_cut_default",
+                            "Summary_uncut_default",
+                            "Code_cut_default",
+                            "Code_uncut_default"
+                        ]
+                        for i in range(8):
+                            result["ablation_results"][i]["allation_info"] = ablation_info[i]
 
+                        # 第三步：根据模型给出的结果，判断是否要继续寻找information，给出要查找的函数名
                         # 第一步：判断是否要继续寻找information，给出要查找的函数名
                         flag_for_context_change = False    #用于判断模型有没有给出有效的函数名以继续查找context
                         for i in range(max_attempts):
@@ -227,4 +239,4 @@ def main(_id):
             print(f"All {len(new_records)} records processed")
         f0.write('\n]')
 if __name__ == "__main__":
-    main(-146)
+    main(-408)

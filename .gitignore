@@ -11,3 +11,4 @@ settings.json
 *.code-workspace
 log.txt
 test.ipynb
+nohup.out

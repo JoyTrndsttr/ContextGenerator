@@ -270,13 +270,13 @@ def prompt_for_instruction(old_without_minus, review, calls, turn, review_info, 
               " as a JSON object:```{ \"function_name\": \"<function_name>\", \"reason\": \"<reason>\" }```"
     return prompt
 
-def prompt_for_refinement(old_without_minus, review, calls, reason, turn, review_info, with_summary_or_code, with_consice_review_position):
+def prompt_for_refinement(old_without_minus, review, calls, reason, turn, review_info, with_summary_or_code, with_presice_review_position):
     prompt = ""
     prompt += "As a developer, imagine you've submitted a pull request and" \
               " your team leader requests you to make a change to a piece of code." \
               " The old code being referred to in the hunk of code changes is:\n"
     prompt += "```\n{}\n```\n".format(old_without_minus)
-    if not with_consice_review_position or not review_info or not review_info.get("review_position_line", None):
+    if not with_presice_review_position or not review_info or not review_info.get("review_position_line", None):
         prompt += "The code review for this code is:\n"
     else:
         if review_info.get("review_hunk_start_line", None):
@@ -312,7 +312,8 @@ def prompt_for_refinement(old_without_minus, review, calls, reason, turn, review
                         prompt += f"\n{caller} calls {signature}, and the first 20 lines of {signature} are implemented as follows:\n```\n{concise_callee_text}\n``` "
                     else:
                         prompt += f"\n{caller} calls {signature} which is defined as:\n```\n{callee_text}\n```"
-                prompt += f"\n{caller} calls {signature}, and the detail information of {signature} is: \n{main_purpose}"
+                elif with_summary_or_code =='summary':
+                    prompt += f"\n{caller} calls {signature}, and the detail information of {signature} is: \n{main_purpose}"
     prompt += "\nPlease generate the revised code according to the review. " \
               "Please ensure that the revised code follows the original code format" \
               " and comments, unless it is explicitly required by the review."

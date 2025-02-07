@@ -1,5 +1,3 @@
-import psycopg2
-from psycopg2 import sql
 from ContextGenerators.getContextGenerators import LanguageContextGenerator
 import getProjectCommitState
 import logging
@@ -18,31 +16,11 @@ import pathos.multiprocessing as mp
 # Setting up logging
 # logging.basicConfig(filename='log.txt', level=logging.ERROR, format='%(asctime)s:%(levelname)s:%(message)s')
 
-# 数据库连接配置
-db_config = {
-    'dbname': 'HCGGraph',
-    'user': 'user',
-    'password': '123456',
-    'host': 'localhost',
-    'port': '5432'
-}
-
-# 从postgres数据库获取所有id
-def get_db_info():
-    conn = psycopg2.connect(**db_config)
-    cursor = conn.cursor()
-    cursor.execute("SELECT _id from cacr_py")
-    while True:
-        record = cursor.fetchone()
-        if record is None:
-            break
-        yield record
-
 # 主函数
 def main(_id):
     # ids = ErrorProcess.error_ids2
-    with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_all_5.json', 'w') as f0:
-    # with open('/mnt/ssd2/wangke/CR_data/dataset/test.json', 'w') as f0:
+    # with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_all_5.json', 'w') as f0:
+    with open('/mnt/ssd2/wangke/CR_data/dataset/test.json', 'w') as f0:
         f0.write('[\n')
         first_record = True
         with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json', 'r') as f:
@@ -52,7 +30,7 @@ def main(_id):
                 try:
                     # if not record['_id'] > 0 : continue
                     # if not record['_id'] == _id: continue
-                    if record['_id']  > -4326 and record['_id'] <= 0 : continue
+                    if record['_id']  > -5426 and record['_id'] <= 0 : continue
                     id = record['_id']
                     print(f'processing: {id}')
                     old_without_minus = model.remove_prefix(record['old'])
@@ -142,30 +120,44 @@ def main(_id):
                             return ablation_result, _ablation_result
                         
                         def execute_refinement_result(args):
-                            turn, type1, type2 = args
-                            return get_refinement_result(turn, type1, type2)
+                            try:
+                                turn, type1, type2 = args
+                                return get_refinement_result(turn, type1, type2)
+                            except Exception as e:
+                                print(f"Error processing ID {id}: {e}")
+                                traceback.print_exc()
+                                return None, None
                         
                         # partial_func = functools.partial(execute_refinement_result, turn)
                         if result["turn"] == 1:
-                            with mp.Pool() as pool:
-                                _results = pool.map(execute_refinement_result,
-                                                       [(turn, "summary", True),
-                                                        (turn, "summary", False)])
-                                ablation_result1, ablation_result2 = _results[0]
-                                ablation_result3, ablation_result4 = _results[1]
-                                result["ablation_results"] = [ablation_result1, ablation_result2, ablation_result1, ablation_result2, ablation_result3, ablation_result4, ablation_result3, ablation_result4]
+                            # with mp.Pool(processes=4) as pool:
+                            #     _results = pool.map(execute_refinement_result,
+                            #                            [(turn, "summary", True),
+                            #                             (turn, "summary", False)])
+                            #     ablation_result1, ablation_result2 = _results[0]
+                            #     ablation_result3, ablation_result4 = _results[1]
+                            #     result["ablation_results"] = [ablation_result1, ablation_result2, ablation_result1, ablation_result2, ablation_result3, ablation_result4, ablation_result3, ablation_result4]
+                            ablation_result1, ablation_result2 = get_refinement_result(turn, "summary", True)
+                            ablation_result3, ablation_result4 = get_refinement_result(turn, "summary", False)
+                            result["ablation_results"] = [ablation_result1, ablation_result2, ablation_result1, ablation_result2, ablation_result3, ablation_result4, ablation_result3, ablation_result4]
                         else:
-                            with mp.Pool() as pool:
-                                _results = pool.map(execute_refinement_result,
-                                                       [(turn, "summary", True),
-                                                        (turn, "code", True),
-                                                        (turn, "summary", False),
-                                                        (turn, "code", False)])
-                                ablation_result1, ablation_result2 = _results[0]
-                                ablation_result3, ablation_result4 = _results[1]
-                                ablation_result5, ablation_result6 = _results[2]
-                                ablation_result7, ablation_result8 = _results[3]
-                                result["ablation_results"] = [ablation_result1, ablation_result2, ablation_result3, ablation_result4, ablation_result5, ablation_result6, ablation_result7, ablation_result8]
+                            # with mp.Pool(processes=4) as pool:
+                            #     _results = pool.map(execute_refinement_result,
+                            #                            [(turn, "summary", True),
+                            #                             (turn, "code", True),
+                            #                             (turn, "summary", False),
+                            #                             (turn, "code", False)])
+                            #     ablation_result1, ablation_result2 = _results[0]
+                            #     ablation_result3, ablation_result4 = _results[1]
+                            #     ablation_result5, ablation_result6 = _results[2]
+                            #     ablation_result7, ablation_result8 = _results[3]
+                            #     result["ablation_results"] = [ablation_result1, ablation_result2, ablation_result3, ablation_result4, ablation_result5, ablation_result6, ablation_result7, ablation_result8]
+                            ablation_result1, ablation_result2 = get_refinement_result(turn, "summary", True)
+                            ablation_result3, ablation_result4 = get_refinement_result(turn, "code", True)
+                            ablation_result5, ablation_result6 = get_refinement_result(turn, "summary", False)
+                            ablation_result7, ablation_result8 = get_refinement_result(turn, "code", False)
+                            result["ablation_results"] = [ablation_result1, ablation_result2, ablation_result3, ablation_result4, ablation_result5, ablation_result6, ablation_result7, ablation_result8]
+                        # 第四步：对比模型生成的结果和ground truth，给出ablation结果
                         ablation_info = [
                             "Summary_cut_precise",
                             "Summary_uncut_precise",
@@ -177,7 +169,7 @@ def main(_id):
                             "Code_uncut_default"
                         ]
                         for i in range(8):
-                            result["ablation_results"][i]["allation_info"] = ablation_info[i]
+                            result["ablation_results"][i]["ablation_info"] = ablation_info[i]
 
                         # 第三步：根据模型给出的结果，判断是否要继续寻找information，给出要查找的函数名
                         # 第一步：判断是否要继续寻找information，给出要查找的函数名
@@ -233,6 +225,9 @@ def main(_id):
                     json.dump(record, f0, indent=4)
                     new_records.append(record)
 
+                # except TimeoutError as e:
+                #     print(f'Error processing ID {id}: Processing timed out after 600 seconds.')
+                #     traceback.print_exc()
                 except Exception as e:
                     print(f'Error processing ID {id}: {e}')
                     traceback.print_exc()

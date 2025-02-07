@@ -3,7 +3,8 @@ import model
 
 # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new_trim4.json', 'r') as f:
 # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new_trim2.json', 'r') as f:
-with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
+# with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
+with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json', 'r') as f:
     records = json.load(f)
 
     # score = [[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0],],[0,[0,0,0,0]],[0,[0,0,0,0]]]
@@ -30,7 +31,8 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
         "Code_cut_default",
         "Code_uncut_default"
     ]
-    num = 0
+    equal, better, worse = 0, 0, 0
+    total_new_code, fail_new_code = 0, 0
     ids = []
     for record in records:
         
@@ -41,15 +43,23 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
         if len(results) == 0: continue
 
         turn = -1
-
-        new_code_flag = True
+        ablation_length = len(results[0].get("ablation_results", []))
+        
+        # new_code_flag = True
+        # for result in results:
+        #     for ablation_result in result.get("ablation_results", []):
+        #         if not ablation_result.get("new_code", None) and not ablation_result.get("new_code_clipped", None):
+        #             new_code_flag = False
+        # if not new_code_flag: 
+        #     print(f"id:{record['_id']};new_code_flag:{new_code_flag}")
+        #     continue
+        
+        
         for result in results:
             for ablation_result in result.get("ablation_results", []):
-                if not ablation_result.get("new_code", None) and not ablation_result.get("new_code_clipped", None):
-                    new_code_flag = False
-        if not new_code_flag: 
-            print(f"id:{record['_id']};new_code_flag:{new_code_flag}")
-            continue
+                total_new_code += 1
+                if not ablation_result.get("new_code", None):
+                    fail_new_code += 1
 
         # if len(results) == 1: continue
         for result in results:
@@ -72,26 +82,12 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
                     score[turn][i+1][1] += result["ablation_results"][i]["em_trim"]
                     score[turn][i+1][2] += result["ablation_results"][i]["bleu"]
                     score[turn][i+1][3] += result["ablation_results"][i]["bleu_trim"]
-            
-            # if turn == 1 and result["bleu_trim"] < results[0]["bleu_trim"]:
-            #     num += 1
-            #     if results[0]["bleu_trim"] - result["bleu_trim"] > 30:
-            #         ids.append(record["_id"])
-            
-            # # if results[0]["bleu_trim"] > 50 and result["bleu_trim"] < 50:
-            # if results[0]["bleu_trim"] - result["bleu_trim"] > 30:
-            #     print(f"id:{record['_id']};turn:{turn+1};bleu_trim:{result['bleu_trim']}")
 
-            if result["ablation_results"][1]["em"] == 1 and result["ablation_results"][4]["em"] != 1: print(f"{record['_id']}")
-
-            # if result_json.find("need more information?\": \"False") != -1:
-            #     break
-            
         
         if turn == -1: continue
         # result = results[-1]
         # for i in range(len(results), 6):
-        for j in range(8):
+        for j in range(ablation_length):
             result = results[turn]
             for i in range(turn+1, 6):
                 # score[i][0] += 1
@@ -100,63 +96,33 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
                 score[i][j+1][2] += result["ablation_results"][j]["bleu"]
                 score[i][j+1][3] += result["ablation_results"][j]["bleu_trim"]
 
-    # print(f"num:{num}")    
-    for i in range(6):
-        count = score[0][0]
-        if count != 0:
-            print(f"turn:{i+1};")
-            for j in range(8):
-                print(f"{ablation_info[j]}; count:{score[i][0]}; em:{score[i][j+1][0]/count}; em_trim:{score[i][j+1][1]/count};  bleu:{score[i][j+1][2]/count}; bleu_trim:{score[i][j+1][3]/count}")
+        if len(results) > 1:
+            if results[1]["ablation_results"][1]["bleu_trim"] > results[0]["ablation_results"][1]["bleu_trim"]:
+                better += 1
+            elif results[1]["ablation_results"][1]["bleu_trim"] < results[0]["ablation_results"][1]["bleu_trim"]:
+                worse += 1
+            else: equal += 1
+            if results[0]["ablation_results"][1]["bleu_trim"] - results[1]["ablation_results"][1]["bleu_trim"] > 30 and results[1]["ablation_results"][1]["bleu_trim"] != 0:
+            # if results[1]["ablation_results"][0]["em"] - results[0]["ablation_results"][0]["em"] == 1:
+                ids.append(record["_id"])
+    total = better + worse + equal
+    print("new code format analysis:")
+    print(f"total_new_code:{total_new_code}, fail_new_code:{fail_new_code}, {fail_new_code/total_new_code}")
+    print("bleu_trim comparison:")
+    print(f"better:{better}, {better/total}")
+    print(f"worse:{worse}, {worse/total}")
+    print(f"equal:{equal}, {equal/total}")
+    for j in range(ablation_length):
+        print(f"{ablation_info[j]};")
+        for i in range(6):
+            count = score[0][0]
+            if count != 0:
+                print(f"turn:{i+1}; count:{score[i][0]}; em:{score[i][j+1][0]/count}; em_trim:{score[i][j+1][1]/count};  bleu:{score[i][j+1][2]/count}; bleu_trim:{score[i][j+1][3]/count}")
     count = len(records)
 
     for key, value in abort_analysis_result.items():
         print(f"{key}:{value}")
-    # print(f"total count:{count}; gpt_bleu:{score2[0]/count}; gpt_bleu_trim:{score2[1]/count}; llama_bleu:{score2[2]/count}; llama_bleu_trim:{score2[3]/count}")
     
-    # with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_negative_30.json', 'w') as f1:
-    #     records2 = [record for record in records if record["_id"] in ids]
-    #     f1.write(json.dumps(records2, indent=4))
-    # with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'w') as f1:
-    #     # records2 = [record for record in records if record["_id"] in ids]
-    #     f1.write(json.dumps(records, indent=4))
-
-# with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_test_with_llama_all.json', 'r') as f:
-# # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new.json', 'r') as f:
-#     records = json.load(f)
-#     delete_ids = []
-#     for record in records:
-#         if record["_id"] == 2289:
-#             pass
-#         if not record.get("new"): continue
-#         results = record['results']
-#         end_line = record["old"].split('\n')[-1][1:]
-#         for result in results:
-            
-#             result["new_code_groud_truth"] = record["new"].split('\n')
-#             index = -1
-#             if not result.get("new_code"):
-#                 results.remove(result)
-#                 continue
-#             if result["turn"] == 1: continue
-#             for i, line in enumerate(result["new_code"]):
-#                 if line.strip() == end_line.strip():
-#                     index = i
-#             if index != -1:
-#                 result["new_code"] = result["new_code"][:index+1]
-#                 print(f"已在new_code中截取到{end_line}")
-#                 # new_without_plus = model.remove_minus_or_plus(record['new'], '+')
-#                 new = record['new']
-#                 new_code = result["new_code"]
-#                 # em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(('\n').join(new_code), new_without_plus)
-#                 em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(new, ('\n').join(new_code))
-#                 result["em"] = em
-#                 result["em_trim"] = em_trim
-#                 result["bleu"] = bleu
-#                 result["bleu_trim"] = bleu_trim
-#             else: 
-#                 print(f"没有在new_code中找到{end_line}")
-#                 # delete_ids.append(record["_id"])
-#     # records = [record for record in records if record["_id"] not in delete_ids]
-
-#     with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new_trim4.json', 'w') as f1:
-#         f1.write(json.dumps(records, indent=4))
+    # with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_negative.json', 'w') as f:
+    #     records = [record for record in records if record["_id"] in ids]
+    #     json.dump(records, f, indent=4)

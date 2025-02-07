@@ -207,6 +207,7 @@ def generate_path_code_diff_to_jsonfile(id , file_path):
     record = get_info_from_jsonfile(file_path, id)
     if record:
         record_id, repo, commit_url, review = record["_id"], record["repo"], record["commit_url"], record["review"]
+        # print(f"Processing record {record_id} in {file_path}")
         repo_path = f"/mnt/ssd2/wangke/CR_data/repo/{repo.split('/')[1]}"
         commit_hash = commit_url.split('/')[-1]
         if record_id <= 0:
@@ -228,7 +229,7 @@ def generate_path_code_diff_to_jsonfile(id , file_path):
         #获取commit_hash的parents_commit_hash，将项目回溯到parents_commit_hash的状态
         parents_commit_hash = get_commit_info(repo, commit_hash).get('parents', [])[0]['sha']
         successful_checkout, applied_commits = restore_to_commit(repo, repo_path, parents_commit_hash)
-
+        # successful_checkout = True
         if successful_checkout:
             for commit_info in reversed(applied_commits):
                 files = commit_info.get('files', [])
@@ -240,18 +241,18 @@ def generate_path_code_diff_to_jsonfile(id , file_path):
                         #有可能是windows将子模块目录当文件处理
                         print(f"Error,failed to apply patch for {file_info['filename']} commit_info:{commit_info['sha']}")
             paths_str, code_diff_str = get_commit_details(repo, commit_url)
-            with open(file_path, 'r', encoding='utf-8') as file:
-                records = json.load(file)
-                for record in records:
-                    if record['_id'] == id:
-                        record['path'] = paths_str
-                        record['code_diff'] = code_diff_str
-                        record['comment'] = comment_info
-                        record['review_url'] = review_url
-                        with open(file_path, 'w', encoding='utf-8') as file:
-                            json.dump(records, file, indent=4)
-                        print(f"Updated record {record_id} in {file_path}")
-                        break
+            # with open(file_path, 'r', encoding='utf-8') as file:
+            #     records = json.load(file)
+            #     for record in records:
+            #         if record['_id'] == id:
+            #             record['path'] = paths_str
+            #             record['code_diff'] = code_diff_str
+            #             record['comment'] = comment_info
+            #             record['review_url'] = review_url
+            #             with open(file_path, 'w', encoding='utf-8') as file:
+            #                 json.dump(records, file, indent=4)
+            #             print(f"Updated record {record_id} in {file_path}")
+            #             break
             success_count += 1
         else:
             print(f"Failed to restore commit {commit_hash} for ID {record_id}")
@@ -263,6 +264,17 @@ def generate_path_code_diff_to_jsonfile(id , file_path):
 
 # 主函数
 def main(id):
+    # file_path = '/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json'
+    
+    # with open(file_path, 'r', encoding='utf-8') as file:
+    #     records = json.load(file)
+    #     ids = [record['_id'] for record in records]
+    # for id in ids:
+    #     try:
+    #         generate_path_code_diff_to_jsonfile(id, file_path)
+    #     except Exception as e:
+    #         print(f"Error processing ID {id}: {e}")
+    #         continue
     return generate_path_code_diff_to_jsonfile(id, '/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json')
     
 if __name__ == "__main__":

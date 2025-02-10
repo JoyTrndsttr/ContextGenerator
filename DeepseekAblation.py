@@ -37,17 +37,29 @@ from concurrent.futures import ThreadPoolExecutor
 
 # 创建线程安全的文件写入锁
 file_lock = threading.Lock()
+# 访问deepseek的设置
+config={
+    "max_tokens": 3000,
+    "do_sample": False,
+    "repetition_penalty": 1.02,
+    "temperature": 0,
+    "port" : 8001
+}
 
 def process_record(record, output_path):
     _record = {
         "id": record["_id"],
-        "ablation_results": []
+        "results": []
     }
     print(f"processing: {_record['id']}")
     
     try:
         # 处理每个turn的结果
-        for turn_result in record.get("results", []):
+        for turn, turn_result in enumerate(record.get("results", [])):
+            _result = {
+                "turn" : turn + 1,
+                "ablation_results": []
+            }
             # 仅保留第二个ablation_result（索引1）
             if len(turn_result["ablation_results"]) > 1:
                 for index, ablation_result in enumerate(turn_result["ablation_results"]):
@@ -55,7 +67,22 @@ def process_record(record, output_path):
                     selected_result = ablation_result
                     # 生成prompt并请求模型
                     prompt = '\n'.join(selected_result["prompt_for_refinement"])
-                    selected_result["new_code"] = RequestLLM().request_deepseek(prompt, record["old"])
+                    if turn > 0:
+                        prev_codes = []
+                        for prev_code_index in range(turn):
+                            prev_code = record["results"][prev_code_index]["ablation_results"][index]["new_code"]
+                            if prev_code: prev_codes.append('\n'.join(prev_code))
+                        if len(prev_codes) > 0:
+                            prompt += "\nHere is the previously generated code. You can select the version that" \
+                                      " a human reviewer is most likely to choose or modify it as needed:" \
+                                      " Your sole purpose is to modify the code based on the reviewer's comments."\
+                                      " The provided functions are only meant to assist you in this task."
+                            for prev_code in prev_codes:
+                                prompt += f'\n```\n{prev_code}\n```'
+                        
+                    selected_result["new_code"], think = RequestLLM().request_deepseek(prompt, record["old"], config)
+                    selected_result["prompt_for_refinement"] = prompt.split("\n")
+                    selected_result["think"] = think.split("\n")
                     
                     # 计算结果指标
                     if selected_result["new_code"]:
@@ -77,9 +104,8 @@ def process_record(record, output_path):
                             "bleu": 0, 
                             "bleu_trim": 0
                         })
-                    
-                    _record["ablation_results"].append(selected_result)
-        
+                    _result["ablation_results"].append(selected_result)
+            _record["results"].append(_result)
         # 线程安全的文件写入
         with file_lock:
             with open(output_path, "a", encoding="utf-8") as f:
@@ -92,7 +118,8 @@ def process_record(record, output_path):
 if __name__ == "__main__":
     # 初始化配置
     input_file = "/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json"
-    output_file = "/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek.json"
+    # output_file = "/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek.json"
+    output_file = "/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek2.json"
     
     # # 加载已处理的数据
     # processed_ids = []
@@ -105,6 +132,7 @@ if __name__ == "__main__":
     # 加载数据
     with open(input_file, "r") as f:
         records = json.load(f)
+        # process_record(records[1], output_file)
         # records = [record for record in records if record["_id"] not in processed_ids]
     
     # 创建线程池（10个worker）

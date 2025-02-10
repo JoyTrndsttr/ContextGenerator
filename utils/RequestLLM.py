@@ -1,12 +1,21 @@
 import requests
 import re
+import random
 
 class RequestLLM:
     def init():
         pass
 
-    def request_deepseek(self, prompt, old):
-        url = "http://localhost:8000/v1/chat/completions"
+    def request_deepseek(self, prompt, old, config={
+        "max_tokens": 3000,
+        "do_sample": True,
+        "repetition_penalty": 1.05,
+        "temperature": 0,
+        "port": 8000
+    }):
+        # port = config.get("port", 8000)
+        port = random.choice([8000,8001])
+        url = f"http://localhost:{port}/v1/chat/completions"
         headers = {
             "Content-Type": "application/json"
         }
@@ -18,9 +27,10 @@ class RequestLLM:
                                         "content": prompt
                                 }
                         ],
-            "max_new_tokens": 3000,
-            "do_sample": False,
-            "temperature": 0
+            "max_new_tokens": config["max_tokens"],
+            "do_sample": config["do_sample"],
+            "repetition_penalty": config["repetition_penalty"],
+            "temperature": config["temperature"]
         }
 
         response = requests.post(url, headers=headers, json=data).json()
@@ -28,6 +38,7 @@ class RequestLLM:
         print(result)
         try:
             output = result.split("</think>")[1]
+            think = result.split("</think>")[0]
             new_code = re.search(r'```(.*)```', output, re.DOTALL)
             if not new_code:
                 print("No code found in response 1")
@@ -38,12 +49,13 @@ class RequestLLM:
                 # new_code = process(output, start, end)
             if new_code: 
                 new_code = new_code.group(1)
-                if new_code.startswith("python"):
-                    new_code = new_code[6:]
+                # if new_code.startswith("python"):
+                #     new_code = new_code[6:]
+                new_code = new_code.split("\n", 1)[1] #未验证
                 if not new_code:
                     print("No code found in response 2")
-                return new_code
+                return new_code, think
         except Exception as e:
             print(e)
             print("No code found in response 3")
-            return None
+            return None, None

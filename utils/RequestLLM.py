@@ -6,7 +6,7 @@ class RequestLLM:
     def init():
         pass
 
-    def request_deepseek(self, prompt, old, config={
+    def request_deepseek(self, prompt, config={
         "max_tokens": 3000,
         "do_sample": True,
         "repetition_penalty": 1.05,
@@ -42,6 +42,7 @@ class RequestLLM:
             new_code = re.search(r'```(.*)```', output, re.DOTALL)
             if not new_code:
                 print("No code found in response 1")
+                return None, think, output
             # if not new_code:
             #     old_lines = old.split("\n")
             #     start = old_lines[0]
@@ -54,8 +55,8 @@ class RequestLLM:
                 new_code = new_code.split("\n", 1)[1] #未验证
                 if not new_code:
                     print("No code found in response 2")
-                return new_code, think
+                return new_code, think, output
         except Exception as e:
             print(e)
             print("No code found in response 3")
-            return None, None
+            return None, None, None

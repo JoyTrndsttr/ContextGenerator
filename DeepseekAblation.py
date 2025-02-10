@@ -80,7 +80,7 @@ def process_record(record, output_path):
                             for prev_code in prev_codes:
                                 prompt += f'\n```\n{prev_code}\n```'
                         
-                    selected_result["new_code"], think = RequestLLM().request_deepseek(prompt, record["old"], config)
+                    selected_result["new_code"], think, output = RequestLLM().request_deepseek(prompt, config)
                     selected_result["prompt_for_refinement"] = prompt.split("\n")
                     selected_result["think"] = think.split("\n")
                     
@@ -121,19 +121,19 @@ if __name__ == "__main__":
     # output_file = "/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek.json"
     output_file = "/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek2.json"
     
-    # # 加载已处理的数据
-    # processed_ids = []
-    # with open(output_file, 'r') as f:
-    #     processed_records = []
-    #     for line in f:
-    #         processed_record = json.loads(line.strip())
-    #         processed_ids.append(processed_record["id"])
+    # 加载已处理的数据
+    processed_ids = []
+    with open(output_file, 'r') as f:
+        processed_records = []
+        for line in f:
+            processed_record = json.loads(line.strip())
+            processed_ids.append(processed_record["id"])
     
     # 加载数据
     with open(input_file, "r") as f:
         records = json.load(f)
         # process_record(records[1], output_file)
-        # records = [record for record in records if record["_id"] not in processed_ids]
+        records = [record for record in records if record["_id"] not in processed_ids]
     
     # 创建线程池（10个worker）
     with ThreadPoolExecutor(max_workers=10) as executor:

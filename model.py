@@ -67,7 +67,7 @@ def prompt_for_instruction(old_without_minus, review, calls, review_info, name_l
               " as a JSON object:```{ \"function_name\": \"<function_name>\", \"reason\": \"<reason>\" }```"
     return prompt
 
-def prompt_for_refinement(old_without_minus, review, calls, review_info, with_summary_or_code, with_presice_review_position, clipped_flag):
+def prompt_for_refinement(old_without_minus, review, calls, prev_code_list, review_info, with_summary_or_code, with_presice_review_position, clipped_flag):
     prompt = ""
     prompt += "As a developer, imagine you've submitted a pull request and" \
               " your team leader requests you to make a change to a piece of code." \
@@ -81,8 +81,13 @@ def prompt_for_refinement(old_without_minus, review, calls, review_info, with_su
         else: prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
     prompt += review
     if len(calls) > 0:
-        prompt += "\nBased on the review, you checked the source code and find that :"
-        for call in calls:
+        for index, call in enumerate(calls):
+            prev_code = prev_code_list[index]
+            if prev_code:
+                prompt += "\nBased on the information above, you provided the following revised code:"
+                prompt += f'\n```\n{prev_code}\n```'
+            prompt += "\nWhile, you thought the information is sufficient."
+            prompt += "\nThen, you checked the source code and find that :"
             caller, callee, callee_text, callee_context = call
             callee_text_list = callee_text.split('\n')
             if len(callee_text_list) > 20:
@@ -108,6 +113,8 @@ def prompt_for_refinement(old_without_minus, review, calls, review_info, with_su
                         prompt += f"\n{caller} calls {signature} which is defined as:\n```\n{callee_text}\n```"
                 elif with_summary_or_code =='summary':
                     prompt += f"\n{caller} calls {signature}, and the detail information of {signature} is: \n{main_purpose}"
+        prompt += "\nPlease note that your sole purpose is to modify the code based on the reviewer's comments."\
+                  " The provided functions are only meant to assist you in this task."
     prompt += "\nPlease generate the revised code according to the review. " \
               "Please ensure that the revised code follows the original code format" \
               " and comments, unless it is explicitly required by the review."
@@ -173,7 +180,7 @@ def evaluate(id, prompt, new, type):
     logging.info(f'Answer:\n {gpt_answer}')
     print(f"{gpt_em}, {gpt_em_trim}, _, _, {gpt_bleu}, {gpt_bleu_trim}")
     logging.info(f"{gpt_em}, {gpt_em_trim}, _, _, {gpt_bleu}, {gpt_bleu_trim}")
-    store_result(id, gpt_em, gpt_em_trim, gpt_bleu, gpt_bleu_trim, type)
+    # store_result(id, gpt_em, gpt_em_trim, gpt_bleu, gpt_bleu_trim, type)
 
 def remove_prefix(old):
     old_without_minus = [] #去除第一个符号

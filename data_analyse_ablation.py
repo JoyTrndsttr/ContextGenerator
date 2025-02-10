@@ -9,7 +9,8 @@ import model
 #     records = json.load(f)
     
 # with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek.json', 'r') as f:
-with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek2.json', 'r') as f:        
+with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek2.json', 'r') as f:
+# with open('/mnt/ssd2/wangke/CR_data/dataset/deepseek/ablation_results.jsonl', 'r') as f:        
     records = []
     for line in f:
         record = json.loads(line.strip())
@@ -27,7 +28,8 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_d
         "case1:Unable to get the prompt_for_instruction result_json": 0,
         "case2:Unable to extract function name from the prompt_for_instruction result using regular expressions": 0,
         "case3:The function name has already existed":0,
-        "case4:Unable to find the definition of the function name":0
+        "case4:Unable to find the definition of the function name":0,
+        "case5:No need to check more information":0
     }
     ablation_info = [
         "Summary_cut_precise",
@@ -113,15 +115,15 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_d
                 worse += 1
             else: equal += 1
             # if results[0]["ablation_results"][1]["bleu_trim"] - results[1]["ablation_results"][1]["bleu_trim"] > 30 and results[1]["ablation_results"][1]["bleu_trim"] != 0:
-            if results[1]["ablation_results"][0]["em"] - results[0]["ablation_results"][0]["em"] == -1:
-                ids.append(record["id"])
+            # if results[1]["ablation_results"][0]["em"] - results[0]["ablation_results"][0]["em"] == -1:
+            #     ids.append(record["_id"])
     total = better + worse + equal
     print("new code format analysis:")
     print(f"total_new_code:{total_new_code}, fail_new_code:{fail_new_code}, {fail_new_code/total_new_code}")
     print("bleu_trim comparison:")
-    print(f"better:{better}, {better/total}")
-    print(f"worse:{worse}, {worse/total}")
-    print(f"equal:{equal}, {equal/total}")
+    # print(f"better:{better}, {better/total}")
+    # print(f"worse:{worse}, {worse/total}")
+    # print(f"equal:{equal}, {equal/total}")
     for j in range(ablation_length):
         print(f"{ablation_info[j]};")
         for i in range(6):
@@ -134,5 +136,6 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_d
         print(f"{key}:{value}")
     
     # with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_negative_deepseek.json', 'w') as f:
-    #     records = [record for record in records if record["id"] in ids]
+    # with open('/mnt/ssd2/wangke/CR_data/dataset/deepseek/dataset_deepseek.json', 'w') as f:
+    #     records = [record for record in records if record["_id"] in ids]
     #     json.dump(records, f, indent=4)

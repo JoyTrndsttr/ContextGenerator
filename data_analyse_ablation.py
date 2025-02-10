@@ -4,8 +4,16 @@ import model
 # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new_trim4.json', 'r') as f:
 # with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new_trim2.json', 'r') as f:
 # with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
-with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json', 'r') as f:
-    records = json.load(f)
+
+# with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json', 'r') as f:
+#     records = json.load(f)
+    
+# with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek.json', 'r') as f:
+with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek2.json', 'r') as f:        
+    records = []
+    for line in f:
+        record = json.loads(line.strip())
+        records.append(record)
 
     # score = [[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0],],[0,[0,0,0,0]],[0,[0,0,0,0]]]
     score = []
@@ -38,8 +46,9 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json
         
         
         results = record['results']
-        # if not record["_id"] > 0 : continue
-        # if record["_id"] > 0 : continue
+        # if not record.get("id", None): record["id"] = record["_id"]
+        # if not record["id"] > 0 : continue
+        # if record["id"] > 0 : continue
         if len(results) == 0: continue
 
         turn = -1
@@ -51,7 +60,8 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json
         #         if not ablation_result.get("new_code", None) and not ablation_result.get("new_code_clipped", None):
         #             new_code_flag = False
         # if not new_code_flag: 
-        #     print(f"id:{record['_id']};new_code_flag:{new_code_flag}")
+        #     # print(f"id:{record['_id']};new_code_flag:{new_code_flag}")
+        #     print(f"id:{record['id']};new_code_flag:{new_code_flag}")
         #     continue
         
         
@@ -97,14 +107,14 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json
                 score[i][j+1][3] += result["ablation_results"][j]["bleu_trim"]
 
         if len(results) > 1:
-            if results[1]["ablation_results"][1]["bleu_trim"] > results[0]["ablation_results"][1]["bleu_trim"]:
+            if results[1]["ablation_results"][0]["bleu_trim"] > results[0]["ablation_results"][0]["bleu_trim"]:
                 better += 1
-            elif results[1]["ablation_results"][1]["bleu_trim"] < results[0]["ablation_results"][1]["bleu_trim"]:
+            elif results[1]["ablation_results"][0]["bleu_trim"] < results[0]["ablation_results"][0]["bleu_trim"]:
                 worse += 1
             else: equal += 1
-            if results[0]["ablation_results"][1]["bleu_trim"] - results[1]["ablation_results"][1]["bleu_trim"] > 30 and results[1]["ablation_results"][1]["bleu_trim"] != 0:
-            # if results[1]["ablation_results"][0]["em"] - results[0]["ablation_results"][0]["em"] == 1:
-                ids.append(record["_id"])
+            # if results[0]["ablation_results"][1]["bleu_trim"] - results[1]["ablation_results"][1]["bleu_trim"] > 30 and results[1]["ablation_results"][1]["bleu_trim"] != 0:
+            if results[1]["ablation_results"][0]["em"] - results[0]["ablation_results"][0]["em"] == -1:
+                ids.append(record["id"])
     total = better + worse + equal
     print("new code format analysis:")
     print(f"total_new_code:{total_new_code}, fail_new_code:{fail_new_code}, {fail_new_code/total_new_code}")
@@ -123,6 +133,6 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json
     for key, value in abort_analysis_result.items():
         print(f"{key}:{value}")
     
-    # with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_negative.json', 'w') as f:
-    #     records = [record for record in records if record["_id"] in ids]
+    # with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_negative_deepseek.json', 'w') as f:
+    #     records = [record for record in records if record["id"] in ids]
     #     json.dump(records, f, indent=4)

@@ -56,12 +56,14 @@ def prompt_for_instruction(old_without_minus, review, calls, review_info, name_l
                     prompt += f"\n{caller} calls {callee}, and the concise definition of {callee} is:\n```\n{concise_callee_text}\n``` "
                 else:
                     prompt += f"\n{caller} calls {callee} which is defined as:\n```\n{callee_text}\n```"
+    prompt += "To make code changes based on the review, you need to refer back to the original code. "
     if len(name_list) > 0:
         name_str = "Notify the following functions have been checked:"
         for name in name_list:
             name_str += f"{name}, "
         prompt += f"\n{name_str[:-2]}"
-    prompt += "\nPlease provide the name appears in the source code that have not yet been checked and explain why you chose it. Format your response"\
+    prompt += "\nPlease provide the name appears in the source code that have not yet been checked and explain why you chose it."\
+              " If sufficient information is available, include a function named \'default_function\' to prevent disruption.Format your response" \
               " as a JSON object:```{ \"function_name\": \"<function_name>\", \"reason\": \"<reason>\" }```"
     return prompt
 
@@ -116,7 +118,7 @@ def prompt_for_refinement(old_without_minus, review, calls, review_info, with_su
         prompt += f"Specifically,if not required by the review, your code should start with:\"{line_start}\" and end with:\"{line_end}\""
     return prompt
 
-def prompt_for_context(text):
+def prompt_for_summary(text):
     prompt = ""
     # prompt += "Try to summarize the class or function about the following text, your summary should include the"\
     #           " function signature, parameters, return type, and main purpose with no more than 100 words."\

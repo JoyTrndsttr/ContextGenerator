@@ -83,7 +83,7 @@ class ReActAgent:
             em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(self.new, new_code)
             if bleu + bleu_trim > ablation_result["bleu"] + ablation_result["bleu_trim"]: #取最好值
                 ablation_result["em"], ablation_result["em_trim"], ablation_result["bleu"], ablation_result["bleu_trim"] = em, em_trim, bleu, bleu_trim
-                ablation_result["new_code"] = new_code_lines
+                ablation_result["new_code"] = new_code.split('\n')
                 ablation_result["new_code_groud_truth"] = self.new.split('\n')
         
         return ablation_result
@@ -146,11 +146,14 @@ class ReActAgent:
                 
                 definition_name = next((definition for definition in definitions if definition['name'] == name), None)
                 if definition_name:
+                    if definition_name == "default_function":
+                        result["flag_for_context_change"] = "case5:No need to check more information"
+                        continue
                     exist_name = next((call[1] for call in self.calls if call[1] == name), None)
                     if exist_name: #如果已经存在该函数的调用关系，则跳过
                         result["flag_for_context_change"] = "case3:The function name has already existed"
                         continue 
-                    result['prompt_for_context'] = model.prompt_for_context(definition_name['text'])
+                    result['prompt_for_context'] = model.prompt_for_summary(definition_name['text'])
                     _, context = model.get_model_response(result['prompt_for_context'])
                     result["prompt_for_context"] = result["prompt_for_context"].split('\n')
                     definition_name["context"] = context

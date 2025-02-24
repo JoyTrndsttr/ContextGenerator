@@ -17,7 +17,9 @@ import re
 import traceback
 # from ContextGenerators import PythonContextGenerators
 # from ContextGenerators import JavaContextGenerators
-from ContextGenerators.PythonContextGenerator import PythonContextGenerator
+# from ContextGenerators.PythonContextGenerator import PythonContextGenerator
+from PythonContextGenerator import PythonContextGenerator
+
 # 设置日志记录
 logging.basicConfig(filename='debug.log', level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s', filemode='w')
@@ -134,8 +136,11 @@ class LanguageContextGenerator:
 
 # 主函数
 def main(id):
-    # return getContextGenerator(id)
-    pass
+    languageContextGenerator = LanguageContextGenerator(id)
+    if not languageContextGenerator: return None
+    contextGenetor = languageContextGenerator.context_generator
+    context = contextGenetor.getContext()
+    print(context)
 
 if __name__ == "__main__":
-    main(1)
+    main(-4071)

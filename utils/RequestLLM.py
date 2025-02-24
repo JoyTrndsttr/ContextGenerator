@@ -7,14 +7,14 @@ class RequestLLM:
         pass
 
     def request_deepseek(self, prompt, config={
-        "max_tokens": 3000,
+        "max_tokens": 2000,
         "do_sample": True,
-        "repetition_penalty": 1.05,
+        "repetition_penalty": 1.1,
         "temperature": 0,
         "port": 8000
     }):
-        # port = config.get("port", 8000)
-        port = random.choice([8000,8001])
+        port = 8000
+        # port = random.choice([8000,8001])
         url = f"http://localhost:{port}/v1/chat/completions"
         headers = {
             "Content-Type": "application/json"

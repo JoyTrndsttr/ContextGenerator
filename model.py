@@ -56,18 +56,16 @@ def prompt_for_instruction(old_without_minus, review, calls, review_info, name_l
                     prompt += f"\n{caller} calls {callee}, and the concise definition of {callee} is:\n```\n{concise_callee_text}\n``` "
                 else:
                     prompt += f"\n{caller} calls {callee} which is defined as:\n```\n{callee_text}\n```"
-    prompt += "To make code changes based on the review, you need to refer back to the original code. "
     if len(name_list) > 0:
         name_str = "Notify the following functions have been checked:"
         for name in name_list:
             name_str += f"{name}, "
         prompt += f"\n{name_str[:-2]}"
-    prompt += "\nPlease provide the name appears in the source code that have not yet been checked and explain why you chose it."\
-              " If sufficient information is available, include a function named \'default_function\' to prevent disruption.Format your response" \
+    prompt += "\nPlease provide the name appears in the source code that have not yet been checked and explain why you chose it. Format your response"\
               " as a JSON object:```{ \"function_name\": \"<function_name>\", \"reason\": \"<reason>\" }```"
     return prompt
 
-def prompt_for_refinement(old_without_minus, review, calls, prev_code_list, review_info, with_summary_or_code, with_presice_review_position, clipped_flag):
+def prompt_for_refinement(old_without_minus, review, calls, review_info, with_summary_or_code, with_presice_review_position, clipped_flag):
     prompt = ""
     prompt += "As a developer, imagine you've submitted a pull request and" \
               " your team leader requests you to make a change to a piece of code." \
@@ -81,13 +79,8 @@ def prompt_for_refinement(old_without_minus, review, calls, prev_code_list, revi
         else: prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
     prompt += review
     if len(calls) > 0:
-        for index, call in enumerate(calls):
-            prev_code = prev_code_list[index]
-            if prev_code:
-                prompt += "\nBased on the information above, you provided the following revised code:"
-                prompt += f'\n```\n{prev_code}\n```'
-            prompt += "\nWhile, you thought the information is sufficient."
-            prompt += "\nThen, you checked the source code and find that :"
+        prompt += "\nBased on the review, you checked the source code and find that :"
+        for call in calls:
             caller, callee, callee_text, callee_context = call
             callee_text_list = callee_text.split('\n')
             if len(callee_text_list) > 20:
@@ -113,8 +106,6 @@ def prompt_for_refinement(old_without_minus, review, calls, prev_code_list, revi
                         prompt += f"\n{caller} calls {signature} which is defined as:\n```\n{callee_text}\n```"
                 elif with_summary_or_code =='summary':
                     prompt += f"\n{caller} calls {signature}, and the detail information of {signature} is: \n{main_purpose}"
-        prompt += "\nPlease note that your sole purpose is to modify the code based on the reviewer's comments."\
-                  " The provided functions are only meant to assist you in this task."
     prompt += "\nPlease generate the revised code according to the review. " \
               "Please ensure that the revised code follows the original code format" \
               " and comments, unless it is explicitly required by the review."
@@ -125,7 +116,7 @@ def prompt_for_refinement(old_without_minus, review, calls, prev_code_list, revi
         prompt += f"Specifically,if not required by the review, your code should start with:\"{line_start}\" and end with:\"{line_end}\""
     return prompt
 
-def prompt_for_summary(text):
+def prompt_for_context(text):
     prompt = ""
     # prompt += "Try to summarize the class or function about the following text, your summary should include the"\
     #           " function signature, parameters, return type, and main purpose with no more than 100 words."\
@@ -180,7 +171,7 @@ def evaluate(id, prompt, new, type):
     logging.info(f'Answer:\n {gpt_answer}')
     print(f"{gpt_em}, {gpt_em_trim}, _, _, {gpt_bleu}, {gpt_bleu_trim}")
     logging.info(f"{gpt_em}, {gpt_em_trim}, _, _, {gpt_bleu}, {gpt_bleu_trim}")
-    # store_result(id, gpt_em, gpt_em_trim, gpt_bleu, gpt_bleu_trim, type)
+    store_result(id, gpt_em, gpt_em_trim, gpt_bleu, gpt_bleu_trim, type)
 
 def remove_prefix(old):
     old_without_minus = [] #去除第一个符号

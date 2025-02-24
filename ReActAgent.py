@@ -12,10 +12,7 @@ import multiprocessing
 import multiprocessing as mp
 from collections import defaultdict
 import hashlib
-import threading
-from utils.RequestLLM import RequestLLM
-file_lock = threading.Lock()
-requestLLM = RequestLLM()
+
 class ReActAgent:
     def __init__(self, config_file, record):
         self.dataset_path = config_file['dataset_path']
@@ -49,16 +46,15 @@ class ReActAgent:
                 if attempt == 1 :
                     logging.error(f'Error processing ID {id}: {e}', exc_info=True)  # Log error with stack trace
                     raise Exception(f'获取仓库在commit提交前的状态失败')
-    
-    def get_refinement_result(self, with_summary_or_code, with_precise_review_position, clipped_flag, prev_code_list):
+
+    def get_refinement_result(self, with_summary_or_code, with_precise_review_position, clipped_flag):
         old_without_minus, record, calls, turn, review_info = self.old_without_minus, self.record, self.calls, self.turn, self.review_info
         max_attempts = 3
         for i in range(max_attempts):
             # for j in range(max_attempts*2):
             ablation_result = {"turn": turn, "ablation_info": "", "prompt_for_refinement": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
-            prompt_for_refinement = model.prompt_for_refinement(old_without_minus, record["review"], calls, prev_code_list, review_info, with_summary_or_code, with_precise_review_position, clipped_flag)
-            # new_code, answer = model.get_model_response(prompt_for_refinement)
-            new_code, think, _ = requestLLM.request_deepseek(prompt_for_refinement)
+            prompt_for_refinement = model.prompt_for_refinement(old_without_minus, record["review"], calls, review_info, with_summary_or_code, with_precise_review_position, clipped_flag)
+            new_code, answer = model.get_model_response(prompt_for_refinement)
             ablation_result["prompt_for_refinement"] = prompt_for_refinement.split('\n')
                 # if not new_code: 
                 #     print(f"Error attemption: 第{i+1}次尝试，第{j+1}次尝试，模型生成的new_code为空")
@@ -82,22 +78,15 @@ class ReActAgent:
                     print(f"没有在new_code中找到{end_line}")
                 new_code_lines = new_code_lines_clipped
                 new_code = '\n'.join(new_code_lines_clipped)
-            
+
             # 获取稳定的结果
             em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(self.new, new_code)
             if bleu + bleu_trim > ablation_result["bleu"] + ablation_result["bleu_trim"]: #取最好值
                 ablation_result["em"], ablation_result["em_trim"], ablation_result["bleu"], ablation_result["bleu_trim"] = em, em_trim, bleu, bleu_trim
-                ablation_result["think"] = [line.strip() for line in think.split('\n') if line.strip()]
-                ablation_result["new_code"] = new_code.split('\n')
+                ablation_result["new_code"] = new_code_lines
                 ablation_result["new_code_groud_truth"] = self.new.split('\n')
-        
+
         return ablation_result
-    
-    def get_ablation_results_new_code(self, results, ablation_id):
-        prev_code_list = []
-        for result in results:
-            prev_code_list.append('\n'.join(result["ablation_results"][ablation_id]["new_code"]))
-        return prev_code_list
 
     def process(self):
         # ReAct框架
@@ -113,14 +102,14 @@ class ReActAgent:
             if name: contextGenerator.updateSource(name)
             definitions = contextGenerator.getContext()
             result = {"turn": turn, "result_json": "", "prompt_for_instruction": "","flag_for_context_change": "",  "ablation_results": []}
-            ablation_result1 = self.get_refinement_result("summary", True, True, self.get_ablation_results_new_code(results, 0))
-            ablation_result2 = self.get_refinement_result("summary", True, False, self.get_ablation_results_new_code(results, 1))
-            ablation_result3 = self.get_refinement_result("code", True, True, self.get_ablation_results_new_code(results, 2))
-            ablation_result4 = self.get_refinement_result("code", True, False, self.get_ablation_results_new_code(results, 3))
-            ablation_result5 = self.get_refinement_result("summary", False, True, self.get_ablation_results_new_code(results, 4))
-            ablation_result6 = self.get_refinement_result("summary", False, False, self.get_ablation_results_new_code(results, 5))
-            ablation_result7 = self.get_refinement_result("code", False, True, self.get_ablation_results_new_code(results, 6))
-            ablation_result8 = self.get_refinement_result("code", False, False, self.get_ablation_results_new_code(results, 7))
+            ablation_result1 = self.get_refinement_result("summary", True, True)
+            ablation_result2 = self.get_refinement_result("summary", True, False)
+            ablation_result3 = self.get_refinement_result("code", True, True)
+            ablation_result4 = self.get_refinement_result("code", True, False)
+            ablation_result5 = self.get_refinement_result("summary", False, True)
+            ablation_result6 = self.get_refinement_result("summary", False, False)
+            ablation_result7 = self.get_refinement_result("code", False, True)
+            ablation_result8 = self.get_refinement_result("code", False, False)
             result["ablation_results"] = [ablation_result1, ablation_result2, ablation_result3, ablation_result4, ablation_result5, ablation_result6, ablation_result7, ablation_result8]
             # result["ablation_results"] = [ablation_result1]
             ablation_info = [
@@ -141,8 +130,7 @@ class ReActAgent:
             max_attempts = 3
             for i in range(max_attempts):
                 result["prompt_for_instruction"] = model.prompt_for_instruction(old_without_minus, record["review"], self.calls, review_info, name_list)
-                # _, result["result_json"] = model.get_model_response(result["prompt_for_instruction"])
-                _, think, result["result_json"]  = requestLLM.request_deepseek(result["prompt_for_instruction"])
+                _, result["result_json"] = model.get_model_response(result["prompt_for_instruction"])
                 if not result["result_json"]: 
                     result["flag_for_context_change"] = "case1:Unable to get the prompt_for_instruction result_json"
                     continue
@@ -155,21 +143,18 @@ class ReActAgent:
                 name = name[0]
                 if name not in name_list: name_list.append(name)
                 #在definitions中查找name，并存入函数调用关系以及被调用函数的实现
-                if definition_name == "default_function":
-                    result["flag_for_context_change"] = "case5:No need to check more information"
-                    continue
+
                 definition_name = next((definition for definition in definitions if definition['name'] == name), None)
                 if definition_name:
                     exist_name = next((call[1] for call in self.calls if call[1] == name), None)
                     if exist_name: #如果已经存在该函数的调用关系，则跳过
                         result["flag_for_context_change"] = "case3:The function name has already existed"
                         continue 
-                    result['prompt_for_summary'] = model.prompt_for_summary(definition_name['text'])
-                    # _, summary = model.get_model_response(result['prompt_for_summary'])
-                    _, think, summary = requestLLM.request_deepseek(result['prompt_for_summary'])
-                    result["prompt_for_summary"] = result["prompt_for_summary"].split('\n')
-                    definition_name["summary"] = summary
-                    self.calls.append((definition_name['caller'], name, definition_name['text'], definition_name['summary']))
+                    result['prompt_for_context'] = model.prompt_for_context(definition_name['text'])
+                    _, context = model.get_model_response(result['prompt_for_context'])
+                    result["prompt_for_context"] = result["prompt_for_context"].split('\n')
+                    definition_name["context"] = context
+                    self.calls.append((definition_name['caller'], name, definition_name['text'], definition_name['context']))
                     flag_for_context_change = True
                     break
                 else:
@@ -184,6 +169,11 @@ class ReActAgent:
 def process_repo_group(config, repo, records):
     """处理同repo的所有records（Linux优化版）"""
     try:
+        # 计算文件分片索引（0-9）
+        file_idx = int(hashlib.md5(repo.encode()).hexdigest(), 16) % 10
+        output_dir = config['output_path'].rstrip('/')
+        output_file = f"{output_dir}/result_{file_idx}.json"
+
         # 处理所有records
         results = []
         for record in records:
@@ -191,9 +181,9 @@ def process_repo_group(config, repo, records):
             try:
                 agent = ReActAgent(config, record)
                 record["definitions"], record["results"] = agent.process()
-                with file_lock:
-                    with open(config["output_path"], "a", encoding="utf-8") as f:
-                        f.write(json.dumps(record) + "\n")
+                # 原子化写入操作（追加模式）
+                with open(output_file, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(record) + "\n")
             except Exception as e:
                 print(f'Error processing ID {id}: {e}')
                 traceback.print_exc()
@@ -206,37 +196,44 @@ def process_repo_group(config, repo, records):
 def main():
     config = {
         "dataset_path": '/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json',
-        "output_path": '/mnt/ssd2/wangke/CR_data/dataset/deepseek/ablation_results.jsonl'
+        "output_path": '/mnt/ssd2/wangke/CR_data/dataset/map_result/',
+        "record_path": '/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json'
     }
+
+    #继续处理未完成的记录
+    with open(config["record_path"], "r", encoding="utf-8") as f0:
+        _records = json.load(f0)
+        ids = [record["_id"] for record in _records]
 
     # 读取数据集
     with open(config["dataset_path"], "r", encoding="utf-8") as f:
         records = json.load(f)
-        # records = [record for record in records if record["id"] < 0]
-    
+        records = [record for record in records if record["_id"] not in ids]
+        print(f"待处理记录数: {len(records)}")
+
     # 按repo分组（确保同repo顺序处理）
     repo_map = defaultdict(list)
     for record in records:
         repo_map[record["repo"]].append(record)
-    
+
     # Linux专用设置
     mp.set_start_method('fork')  # 明确设置进程启动方式
-    
+
     # 创建进程池处理分组数据
     with mp.Pool(10) as pool:
         tasks = [(config, repo, records) for repo, records in repo_map.items()]
-        
+
         # 获取详细处理结果
         processed_results = pool.starmap(process_repo_group, tasks)
-        
+
         # 统计输出
         total_success = sum(r[2] for r in processed_results if r[1] == "success")
         failed_repos = [r[0] for r in processed_results if r[1] != "success"]
-        
+
         print(f"成功处理记录数: {total_success}/{len(records)}")
         print(f"失败仓库数: {len(failed_repos)}")
         if failed_repos:
             print("失败仓库列表:", ", ".join(failed_repos))
-    
+
 if __name__ == "__main__":
     main()

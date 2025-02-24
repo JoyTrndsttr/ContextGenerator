@@ -40,10 +40,10 @@ file_lock = threading.Lock()
 # 访问deepseek的设置
 config={
     "max_tokens": 3000,
-    "do_sample": False,
+    "do_sample": True,
     "repetition_penalty": 1.02,
     "temperature": 0,
-    "port" : 8001
+    "port" : 8000
 }
 
 def process_record(record, output_path):
@@ -63,7 +63,7 @@ def process_record(record, output_path):
             # 仅保留第二个ablation_result（索引1）
             if len(turn_result["ablation_results"]) > 1:
                 for index, ablation_result in enumerate(turn_result["ablation_results"]):
-                    if index > 3: continue # 只保留前4个ablation_result
+                    if index < 4: continue # 只保留前4个ablation_result
                     selected_result = ablation_result
                     # 生成prompt并请求模型
                     prompt = '\n'.join(selected_result["prompt_for_refinement"])
@@ -81,8 +81,12 @@ def process_record(record, output_path):
                                 prompt += f'\n```\n{prev_code}\n```'
                         
                     selected_result["new_code"], think, output = RequestLLM().request_deepseek(prompt, config)
-                    selected_result["prompt_for_refinement"] = prompt.split("\n")
-                    selected_result["think"] = think.split("\n")
+                    if prompt:
+                        selected_result["prompt_for_refinement"] = prompt.split("\n")
+                    if think:
+                        selected_result["think"] = think.split("\n")
+                    else:
+                        selected_result["think"] = []
                     
                     # 计算结果指标
                     if selected_result["new_code"]:
@@ -118,8 +122,8 @@ def process_record(record, output_path):
 if __name__ == "__main__":
     # 初始化配置
     input_file = "/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json"
-    # output_file = "/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek.json"
-    output_file = "/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek2.json"
+    # output_file = "/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek2.json"
+    output_file = "/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek_default.json"
     
     # 加载已处理的数据
     processed_ids = []
@@ -128,6 +132,7 @@ if __name__ == "__main__":
         for line in f:
             processed_record = json.loads(line.strip())
             processed_ids.append(processed_record["id"])
+    print(f"Processed {len(processed_ids)} records")
     
     # 加载数据
     with open(input_file, "r") as f:

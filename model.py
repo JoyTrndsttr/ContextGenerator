@@ -9,7 +9,7 @@ import logging
 
 generation_kwargs = {
     "max_tokens": 1000,
-    "temperature": 0.1,
+    "temperature": 0,
     "top_p": 0.95,
     "n": 1,
     "presence_penalty": 0.0,
@@ -19,6 +19,30 @@ generation_kwargs = {
 model = OpenAIUtils(model_id="llama:7b", generation_kwargs=generation_kwargs)
 logging.basicConfig(filename='log.txt', level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s', filemode='w')
+
+def prompt_for_classifier(old, review, new):
+    prompt = "\nYou are a experienced researcher majoring in code review tasks. In a pull request, you discover that there are senarios where the the review is not related to the code changes. Additionally, a developer should modify the code based on the review in a code refinement task. When he/she encounters a identifier of which he/she forgets the utility, he/she would search its usage in the repository. You should tell if this context is need to correctly modify the code based on the review."
+    prompt += "\nTo evaluate the relevance between the review and code diff, as well as the extent of the context dependency, you should provide a \'Relevance Score\' and a \'Context Dependency Score\' each ranging from 0 to 10 and explain the reason behind the score. Here are some examples."
+    prompt += "\nSample1:"
+    prompt += "\nold code:```\n def name_to_sphinx(self):\n class OpReference:\n-    def __init__(self, operator, docstring, order = None):\n         self.docstring = docstring\n         self.order = 1000000 if order is None else order\n```"
+    prompt += "\nnew code:```\n def name_to_sphinx(self):\n class OpReference:\n+    def __init__(self, operator, docstring, order=None):         self.operator = operator\n         self.docstring = docstring\n         self.order = 1000000 if order is None else order\n```"
+    prompt += "\nreview: Unfortunately, Python has infinite integers and sorting by key (instead of compare function)."
+    prompt += "\nanswer:{\"Relevance Score\": 0, \"Context Dependency Score\": 7, \"Explanation\": \"The only change in the code is removing an extra space around the '=' in the function parameter 'order = None', making it 'order=None'. This is purely a formatting change and has no relevance to the review content, so the Relevance Score is 0. Althouth the line 'self.order = 1000000' is related to the concept of 'infinite integers' mentioned in the review, the \'compare function\' is unclear for the code refinement, leading to a Context Dependency Score of 7.\"}"
+    prompt += "\nSample2:"
+    prompt += "\nold code:```\n             msg_aggregator=self.msg_aggregator,\n         )\n-    def _initialize_uniswap(self, premium: Optional[Premium]) -> None:\n-        self.eth_modules[\'uniswap\'] = Uniswap(\n-            ethereum_manager=self.ethereum,\n-            database=self.database,\n-            premium=premium,\n-            msg_aggregator=self.msg_aggregator,\n-        )\n \n     def get_zerion(self) -> Zerion:\n         \"\"\"Returns the initialized zerion. If it\'s not ready it waits for 5 seconds\n         and then times out. This should really never happen\n```"
+    prompt += "\nnew code:```\n             msg_aggregator=self.msg_aggregator,\n         )\n \n     def get_zerion(self) -> Zerion:\n         \"\"\"Returns the initialized zerion. If it\'s not ready it waits for 5 seconds\n         and then times out. This should really never happen\n```"
+    prompt += "\nThe reviewer commented on the line:```def _initialize_uniswap(self, premium: Optional[Premium]) -> None:``` :so this is not needed"
+    prompt += "\nanswer:{\"Relevance Score\": 10, \"Context Dependency Score\": 0, \"Explanation\":\"The modification perfectly perform the required deletion based on the review, so the Relevance Score is 10. Additionally, the only required change is removing the function \'_initialize_uniswap\'. Since how to refine the code is clear, additional context would provide minimal extra value for code refinement, leading to a Context Dependency Score of 0.\"}"
+    prompt += "\nSample3:"
+    prompt += "\nold code:```\n import typing\n from mitmproxy.contentviews import base\n-from mitmproxy.contentviews.json import parse_json\n \n \n-PARSE_ERROR = object()\n def format_graphql(data):\n```"
+    prompt += "\nnew code:```\n import typing\n from mitmproxy.contentviews import base\n+from mitmproxy.contentviews.json import parse_json, PARSE_ERROR\n \n \n def format_graphql(data):\n```"
+    prompt += "\nreview: \'PARSE_ERROR\' should be imported and not redefined here, or am I missing something?"
+    prompt += "\nanswer:{\"Relevance Score\": 10, \"Context Dependency Score\": 10, \"Explanation\":\"The modification perfectly imports the \'PARSE_ERROR\' object based on the review, so the Relevance Score is 10. Additionally, it's unclear how to import the \'PARSE_ERROR\' object. However, the context about the implementation of the \'parse_json\' function may help to understant the utility of the \'PARSE_ERROR\' object, so the Context Dependency Score is 10.\"}"
+    prompt += "\nHere is a new sample, please provide a \'Relevance Score\' and a \'Context Dependency Score\' each ranging from 0 to 10 and explain the reason behind the score. Your answer should be in the format of a JSON object:```{ \"Relevance Score\": <Relevance Score>, \"Context Dependency Score\": <Context Dependency Score>, \"Explanation\": \"<Explanation>\" }```"
+    prompt += f"\nold code: \n```\n{old}\n```"
+    prompt += f"\nnew code: \n```\n{new}\n```"
+    prompt += f"\nreview: {review}"
+    return prompt
 
 def prompt_for_instruction(old_without_minus, review, calls, review_info, name_list):
     prompt = "As a developer, your pull request receives a reviewer's comment on " \

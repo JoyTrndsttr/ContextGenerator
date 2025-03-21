@@ -22,9 +22,9 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_all_3.json', 'r') as f:
         record["context"] = "Omit"
         
         results = record['results']
-        # if not record["_id"] > 0 : continue
+        if not record["_id"] > 0 : continue
         # if record["_id"] > 0 : continue
-        if record["_id"] < -2312 or record["_id"] > 0: continue
+        # if record["_id"] < -2312 or record["_id"] > 0: continue
         if len(results) == 0: continue
         score2[0] += record["gpt_bleu"]
         score2[1] += record["gpt_bleu_trim"]
@@ -43,7 +43,7 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_all_3.json', 'r') as f:
             if abort_analysis:
                 abort_analysis_result[abort_analysis] += 1
             
-            if not result.get("new_code"): continue
+            # if not result.get("new_code"): continue
             turn = result['turn'] - 1
             if True:
             # if result["bleu_trim"] > 50: 
@@ -81,7 +81,7 @@ with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_all_3.json', 'r') as f:
     for i in range(6):
         count = score[0][0]
         if count != 0:
-            print(f"turn:{i+1}; count:{score[i][0]}; em:{score[i][1][0]/count}; em_trim:{score[i][1][1]/count};  bleu:{score[i][1][2]/count}; bleu_trim:{score[i][1][3]/count}")
+            print(f"turn:{i}; count:{score[i][0]}; em:{score[i][1][0]/count}; em_trim:{score[i][1][1]/count};  bleu:{score[i][1][2]/count}; bleu_trim:{score[i][1][3]/count}")
     count = len(records)
 
     for key, value in abort_analysis_result.items():

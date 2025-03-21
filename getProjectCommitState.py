@@ -10,7 +10,7 @@ import re
 
 # GitHub 个人访问令牌
 # GITHUB_TOKEN = json.load(open("settings.json", encoding='utf-8'))["GITHUB_TOKEN"]
-GITHUB_TOKEN = json.load(open("/home/wangke/model/ContextGenerator/settings.json", encoding='utf-8'))["GITHUB_TOKEN"]
+GITHUB_TOKEN = json.load(open("/home/wangke/model/ContextGenerator/settings.json", encoding='utf-8'))["github_tokens"][0]
 
 # 最大查找 parent commit 的次数
 MAX_PARENT_SEARCH = 100
@@ -106,6 +106,7 @@ def apply_patch(repo_path, file_info):
         if not 'patch' in file_info:
             return
         patch = file_info['patch']
+        #TODO: patch也有分页问题，需要根据commit的api查询url，加上```?page=2````参数处理
         try:
             with open(file_path, 'r', encoding='utf-8') as file:
                 file_content = file.readlines()
@@ -210,8 +211,8 @@ def generate_path_code_diff_to_jsonfile(id , file_path):
         # print(f"Processing record {record_id} in {file_path}")
         repo_path = f"/mnt/ssd2/wangke/CR_data/repo/{repo.split('/')[1]}"
         commit_hash = commit_url.split('/')[-1]
-        if record_id <= 0:
-            pull = commit_url.split('pull/')[1].split('/')[0]
+        # if record_id <= 0:
+        pull = commit_url.split('pull/')[1].split('/')[0]
 
         review_url = record.get('review_url', None)
         if review_url: comment = get_comment(review_url)
@@ -241,18 +242,18 @@ def generate_path_code_diff_to_jsonfile(id , file_path):
                         #有可能是windows将子模块目录当文件处理
                         print(f"Error,failed to apply patch for {file_info['filename']} commit_info:{commit_info['sha']}")
             paths_str, code_diff_str = get_commit_details(repo, commit_url)
-            # with open(file_path, 'r', encoding='utf-8') as file:
-            #     records = json.load(file)
-            #     for record in records:
-            #         if record['_id'] == id:
-            #             record['path'] = paths_str
-            #             record['code_diff'] = code_diff_str
-            #             record['comment'] = comment_info
-            #             record['review_url'] = review_url
-            #             with open(file_path, 'w', encoding='utf-8') as file:
-            #                 json.dump(records, file, indent=4)
-            #             print(f"Updated record {record_id} in {file_path}")
-            #             break
+            with open(file_path, 'r', encoding='utf-8') as file:
+                records = json.load(file)
+                for record in records:
+                    if record['_id'] == id:
+                        record['review_url'] = review_url
+                        record['path'] = paths_str
+                        record['code_diff'] = code_diff_str
+                        record['comment'] = comment_info
+                        with open(file_path, 'w', encoding='utf-8') as file:
+                            json.dump(records, file, indent=4)
+                        print(f"Updated record {record_id} in {file_path}")
+                        break
             success_count += 1
         else:
             print(f"Failed to restore commit {commit_hash} for ID {record_id}")
@@ -261,6 +262,50 @@ def generate_path_code_diff_to_jsonfile(id , file_path):
         
         processed_count += 1
     return successful_checkout
+
+def CLBPP(record):
+    if not record: return None
+    record_id, repo, commit_url, review = record["_id"], record["repo"], record["commit_url"], record["review"]
+    repo_path = f"/mnt/ssd2/wangke/CR_data/repo/{repo.split('/')[1]}"
+    commit_hash = commit_url.split('/')[-1]
+    pull = commit_url.split('pull/')[1].split('/')[0]
+    review_url = record.get('review_url', None)
+    if review_url: comment = get_comment(review_url)
+    else:comment, review_url = get_comment_info(repo, pull, review)
+    if comment:
+        comment_info = {
+            "original_position": comment["original_position"],
+            "original_start_line": comment["original_start_line"],
+            "original_line": comment["original_line"],
+            "diff_hunk": comment["diff_hunk"],
+        }
+    else:
+        comment_info = None
+    
+    #获取commit_hash的parents_commit_hash，将项目回溯到parents_commit_hash的状态
+    parents_commit_hash = get_commit_info(repo, commit_hash).get('parents', [])[0]['sha']
+    successful_checkout, applied_commits = restore_to_commit(repo, repo_path, parents_commit_hash)
+    # successful_checkout = True
+    if successful_checkout:
+        for commit_info in reversed(applied_commits):
+            files = commit_info.get('files', [])
+            for file_info in files:
+                try:
+                    apply_patch(repo_path, file_info)
+                    print(f"Applied patch for {file_info['filename']} commit_info:{commit_info['sha']}")
+                except PermissionError:
+                    #有可能是windows将子模块目录当文件处理
+                    print(f"Error,failed to apply patch for {file_info['filename']} commit_info:{commit_info['sha']}")
+        paths_str, code_diff_str = get_commit_details(repo, commit_url)
+        record['review_url'] = review_url
+        record['path'] = paths_str
+        record['code_diff'] = code_diff_str
+        record['comment'] = comment_info
+        print(f"Successfully processed record {record_id}")
+        return record
+    else:
+        print(f"Failed to restore commit {commit_hash} for ID {record_id}")
+        raise Exception("Failed to restore commit")
 
 # 主函数
 def main(id):
@@ -275,7 +320,8 @@ def main(id):
     #     except Exception as e:
     #         print(f"Error processing ID {id}: {e}")
     #         continue
-    return generate_path_code_diff_to_jsonfile(id, '/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json')
+    # return generate_path_code_diff_to_jsonfile(id, '/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json')
+    return generate_path_code_diff_to_jsonfile(id, '/mnt/ssd2/wangke/dataset/sample.json')
     
 if __name__ == "__main__":
-    main(-4071)
+    main(1)

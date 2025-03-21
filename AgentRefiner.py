@@ -1,5 +1,6 @@
-from ContextGenerators.getContextGenerators import LanguageContextGenerator
+from ContextGenerators.LanguageContextGeneratorManager import LanguageContextGenerator
 import getProjectCommitState
+from getProjectCommitState import CLBPP
 import logging
 import ErrorProcess
 import json
@@ -13,53 +14,30 @@ import multiprocessing as mp
 from collections import defaultdict
 import hashlib
 
-class ReActAgent:
+class AgentRefiner:
     def __init__(self, config_file, record):
         self.dataset_path = config_file['dataset_path']
         self.output_path = config_file['output_path']
-        self.record = record
+        self.record = CLBPP(record)
         self.id = record['_id']
         print(f'processing: {self.id}')
         self.old_without_minus = model.remove_prefix(record['old'])
         self.new_without_plus = model.remove_prefix(record['new'])
         self.new = record['new']
         self.turn, self.flag_for_context_change = 0, True
-        # 获取仓库在commit提交前的状态
-        self.get_commit_state()
-        self.languageContextGenerator = LanguageContextGenerator(self.id)
+        self.languageContextGenerator = LanguageContextGenerator(self.record)
         if not self.languageContextGenerator: return None
         self.contextGenerator = self.languageContextGenerator.context_generator
         self.review_info = self.languageContextGenerator.comment
-
-    def get_commit_state(self, max_attempts=1):
-        # 获取仓库在commit提交前的状态
-        attempt = 0
-        id = self.id
-        while attempt < max_attempts:
-            try:
-                successful_checkout = getProjectCommitState.main(id)
-                if successful_checkout:
-                    break
-            except Exception as e:
-                attempt += 1
-                print(f'Error processing ID {id}: {e}')
-                if attempt == 1 :
-                    logging.error(f'Error processing ID {id}: {e}', exc_info=True)  # Log error with stack trace
-                    raise Exception(f'获取仓库在commit提交前的状态失败')
 
     def get_refinement_result(self, with_summary_or_code, with_precise_review_position, clipped_flag):
         old_without_minus, record, calls, turn, review_info = self.old_without_minus, self.record, self.calls, self.turn, self.review_info
         max_attempts = 3
         for i in range(max_attempts):
-            # for j in range(max_attempts*2):
             ablation_result = {"turn": turn, "ablation_info": "", "prompt_for_refinement": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
             prompt_for_refinement = model.prompt_for_refinement(old_without_minus, record["review"], calls, review_info, with_summary_or_code, with_precise_review_position, clipped_flag)
             new_code, answer = model.get_model_response(prompt_for_refinement)
             ablation_result["prompt_for_refinement"] = prompt_for_refinement.split('\n')
-                # if not new_code: 
-                #     print(f"Error attemption: 第{i+1}次尝试，第{j+1}次尝试，模型生成的new_code为空")
-                #     print(f"answer: {answer}")
-                # if new_code: break
             if not new_code: continue
             new_code_lines = new_code.split('\n')
 
@@ -102,28 +80,21 @@ class ReActAgent:
             if name: contextGenerator.updateSource(name)
             definitions = contextGenerator.getContext()
             result = {"turn": turn, "result_json": "", "prompt_for_instruction": "","flag_for_context_change": "",  "ablation_results": []}
-            ablation_result1 = self.get_refinement_result("summary", True, True)
             ablation_result2 = self.get_refinement_result("summary", True, False)
-            ablation_result3 = self.get_refinement_result("code", True, True)
-            ablation_result4 = self.get_refinement_result("code", True, False)
-            ablation_result5 = self.get_refinement_result("summary", False, True)
-            ablation_result6 = self.get_refinement_result("summary", False, False)
-            ablation_result7 = self.get_refinement_result("code", False, True)
-            ablation_result8 = self.get_refinement_result("code", False, False)
-            result["ablation_results"] = [ablation_result1, ablation_result2, ablation_result3, ablation_result4, ablation_result5, ablation_result6, ablation_result7, ablation_result8]
-            # result["ablation_results"] = [ablation_result1]
-            ablation_info = [
-                "Summary_cut_precise",
-                "Summary_uncut_precise",
-                "Code_cut_precise",
-                "Code_uncut_precise",
-                "Summary_cut_default",
-                "Summary_uncut_default",
-                "Code_cut_default",
-                "Code_uncut_default"
-            ]
-            for i in range(len(result["ablation_results"])):
-                result["ablation_results"][i]["ablation_info"] = ablation_info[i]
+            # result["ablation_results"] = [ablation_result1, ablation_result2, ablation_result3, ablation_result4, ablation_result5, ablation_result6, ablation_result7, ablation_result8]
+            result["ablation_results"] = [ablation_result2]
+            # ablation_info = [
+            #     "Summary_cut_precise",
+            #     "Summary_uncut_precise",
+            #     "Code_cut_precise",
+            #     "Code_uncut_precise",
+            #     "Summary_cut_default",
+            #     "Summary_uncut_default",
+            #     "Code_cut_default",
+            #     "Code_uncut_default"
+            # ]
+            # for i in range(len(result["ablation_results"])):
+            #     result["ablation_results"][i]["ablation_info"] = ablation_info[i]
 
             # 第一步：判断是否要继续寻找information，给出要查找的函数名
             flag_for_context_change = False    #用于判断模型有没有给出有效的函数名以继续查找context
@@ -164,7 +135,8 @@ class ReActAgent:
             result["result_json"] = result["result_json"].split('\n')
             # result["new_code_groud_truth"] = record["new"].split('\n')
             results.append(result)
-        return definitions, results
+        record["definitions"], record["results"] = definitions, results
+        return record
 
 def process_repo_group(config, repo, records):
     """处理同repo的所有records（Linux优化版）"""
@@ -180,7 +152,7 @@ def process_repo_group(config, repo, records):
             id = record['_id']
             try:
                 agent = ReActAgent(config, record)
-                record["definitions"], record["results"] = agent.process()
+                record = agent.process()
                 # 原子化写入操作（追加模式）
                 with open(output_file, "a", encoding="utf-8") as f:
                     f.write(json.dumps(record) + "\n")
@@ -241,4 +213,5 @@ def main():
             print("失败仓库列表:", ", ".join(failed_repos))
 
 if __name__ == "__main__":
-    main()
+    # main()
+    pass

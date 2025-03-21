@@ -25,7 +25,7 @@ class OpenAIUtils:
 
 generation_kwargs = {
     "max_tokens": 15,
-    "temperature": 0.8,
+    "temperature": 0,
     "top_p": 0.95,
     "n": 1,
     "presence_penalty": 0.0,

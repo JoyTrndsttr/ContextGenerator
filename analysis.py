@@ -1,38 +1,7 @@
 import json
 import model
-
-# with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new_trim4.json', 'r') as f:
-# with open('/mnt/ssd2/wangke/CR_data/dataset/cacr_python_with_llama_cr_new_trim2.json', 'r') as f:
-# with open('/mnt/ssd2/wangke/CR_data/dataset/dataset_part.json', 'r') as f:
-
-# with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json', 'r') as f:
-# with open('/mnt/ssd2/wangke/dataset/cr_data/dataset_sorted_llama_instructed_processed.json', 'r') as f:
-# with open('/mnt/ssd2/wangke/dataset/cr_data/dataset_sorted_llama_instructed_map_deepseek_processed.json', 'r') as f:
-#     records = json.load(f)
 with open('/mnt/ssd2/wangke/dataset/AgentRefiner/map_result.json', 'r') as f:
     records = [json.loads(line) for line in f]
-    
-# with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek.json', 'r') as f:
-# with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek2.json', 'r') as f:
-# # with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek_default.json', 'r') as f:
-# # with open('/mnt/ssd2/wangke/CR_data/dataset/deepseek/ablation_results.jsonl', 'r') as f:        
-#     records = []
-#     for line in f:
-#         record = json.loads(line.strip())
-#         records.append(record)
-
-    # for record in records:
-    #     result = record['results'][0]
-    #     ablation_results = result.get("ablation_results", [])
-    #     #替换第一个和第三个
-    #     tmp_ablation_results = ablation_results[2]
-    #     ablation_results[2] = ablation_results[0]
-    #     ablation_results[2]["ablation_info"] = "Code_cut_precise"
-    #     ablation_results[0] = tmp_ablation_results
-    #     ablation_results[0]["ablation_info"] = "Summary_cut_precise"
-            
-
-    # score = [[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0]],[0,[0,0,0,0],],[0,[0,0,0,0]],[0,[0,0,0,0]]]
     score = []
     model_score = [0,0,0,0]
     gpt_score = [0,0,0,0]
@@ -44,10 +13,10 @@ with open('/mnt/ssd2/wangke/dataset/AgentRefiner/map_result.json', 'r') as f:
         score.append(turn_result)
     abort_analysis_result = {
         "case1:Unable to get the prompt_for_instruction result_json": 0,
-        "case2:Unable to extract function name from the prompt_for_instruction result using regular expressions": 0,
+        "case2:Failed to extract information from the prompt_for_instruction result using regular expressions": 0,
         "case3:The function name has already existed":0,
         "case4:Unable to find the definition of the function name":0,
-        "case5:No need to check more information":0
+        "case5:LLM does not require additional context":0
     }
     ablation_info = [
         "Summary_cut_precise",
@@ -70,7 +39,7 @@ with open('/mnt/ssd2/wangke/dataset/AgentRefiner/map_result.json', 'r') as f:
         # if not record["id"] > 0 : continue
         # if record["id"] > 0 : continue
         if len(results) == 0: continue
-        if len(results) == 1: continue
+        # if len(results) == 1: continue
 
         model_score[0] += record["model_em"]
         model_score[1] += record["model_em_trim"]
@@ -178,7 +147,7 @@ with open('/mnt/ssd2/wangke/dataset/AgentRefiner/map_result.json', 'r') as f:
     print(f"gpt_em:{gpt_score[0]/count}, gpt_em_trim:{gpt_score[1]/count}, gpt_bleu:{gpt_score[2]/count}, gpt_bleu_trim:{gpt_score[3]/count}")
 
     # with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_negative_deepseek.json', 'w') as f:
-    with open('/mnt/ssd2/wangke/dataset/cr_data/case_study.json', 'w') as f:
-        print(f"len(ids):{len(ids)}")
-        records = [record for record in records if record["_id"] in ids]
-        json.dump(records, f, indent=4)
+    # with open('/mnt/ssd2/wangke/dataset/cr_data/case_study.json', 'w') as f:
+    #     print(f"len(ids):{len(ids)}")
+    #     records = [record for record in records if record["_id"] in ids]
+    #     json.dump(records, f, indent=4)

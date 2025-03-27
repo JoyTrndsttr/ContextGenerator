@@ -268,10 +268,11 @@ def CLBPP(record):
     record_id, repo, commit_url, review = record["_id"], record["repo"], record["commit_url"], record["review"]
     repo_path = f"/mnt/ssd2/wangke/CR_data/repo/{repo.split('/')[1]}"
     commit_hash = commit_url.split('/')[-1]
-    pull = commit_url.split('pull/')[1].split('/')[0]
     review_url = record.get('review_url', None)
     if review_url: comment = get_comment(review_url)
-    else:comment, review_url = get_comment_info(repo, pull, review)
+    else:
+        pull = commit_url.split('pull/')[1].split('/')[0]
+        comment, review_url = get_comment_info(repo, pull, review)
     if comment:
         comment_info = {
             "original_position": comment["original_position"],

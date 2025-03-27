@@ -47,6 +47,8 @@ class PythonContextGenerator:
         self.definitions = []
         self.pricise_definitions = []
         self.calls = [] #存储调用关系，元组形式(调用函数名，被调用函数名)
+        self.file_paths = [] #检索范围
+        self.file_paths.append(self.file_path)
 
     def find_node_by_range(self, node):
         if not node: return None
@@ -121,6 +123,8 @@ class PythonContextGenerator:
         for definition in self.definitions:
             if definition.name == name:
                 self.file_path = definition.module_path._str
+                if self.file_path not in self.file_paths:
+                    self.file_paths.append(self.file_path)
                 with open(self.file_path, 'r', encoding='utf-8') as f:
                     self.source_code = f.read()
                     self.tree = self.parser.parse(self.source_code.encode('utf8')).root_node
@@ -145,6 +149,26 @@ class PythonContextGenerator:
                 self.start_index, self.end_index = start+1, end+1
                 self.find_node_by_range(self.tree)
                 return True
+
+    def search_definition(self, name):
+        for path in self.file_paths:
+            with open(path, 'r', encoding='utf-8') as f:
+                source_code = f.read()
+                script = jedi.Script(source_code, path=path)
+                positions = []
+                #在整个source_code中寻找name出现的行号和列号
+                for i, line in enumerate(source_code.split('\n')):
+                    column = line.find(name)
+                    if column != -1:
+                        positions.append((i+1, column + 1))
+                #根据行号和列号找到definition
+                for position in positions:
+                    definitions = script.goto(position[0], position[1], follow_imports=True)
+                    if not definitions: continue
+                    else:
+                        definition = definitions[0]
+                        self.definitions.append(definition)
+                        return self.definitions
 
         
 

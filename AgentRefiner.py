@@ -98,34 +98,44 @@ class AgentRefiner:
 
             # 第一步：判断是否要继续寻找information，给出要查找的函数名
             flag_for_context_change = False    #用于判断模型有没有给出有效的函数名以继续查找context
-            max_attempts = 3
+            max_attempts = 1
             for i in range(max_attempts):
                 result["prompt_for_instruction"] = model.prompt_for_instruction(old_without_minus, record["review"], self.calls, review_info, name_list)
-                _, result["result_json"] = model.get_model_response(result["prompt_for_instruction"])
+                _, result["result_json"] = model.get_deepseek_response(result["prompt_for_instruction"])
                 if not result["result_json"]: 
                     result["flag_for_context_change"] = "case1:Unable to get the prompt_for_instruction result_json"
                     continue
-                # if not reason_for_name_selection:
-                #     reason_for_name_selection = re.findall(r'"reason": "(.*?)",', result["result_json"])
-                name = re.findall(r'"function_name": "(.*?)",', result["result_json"])
-                if len(name) == 0:
-                    result["flag_for_context_change"] = "case2:Unable to extract function name from the prompt_for_instruction result using regular expressions"
+                try:
+                    result_json = result["result_json"]
+                    additional_context_required = re.search(r'(\d+)', result_json.split("Additional_context_required")[1]).group(0)
+                    if additional_context_required == "0":
+                        result["flag_for_context_change"] = "case5:LLM does not require additional context"
+                        continue
+                    element_name_to_retrieve = re.search(r'[a-zA-Z_]+', result_json.split("Element_name_to_retrieve")[1]).group(0)
+                    details_to_retrieve = re.search(r'"Details_to_retrieve"\s*:\s*"((?:[^"\\]|\\.)*)"', result_json).group(1)
+                    name = element_name_to_retrieve
+                    if name not in name_list: name_list.append(name)
+                except Exception as e:
+                    result["flag_for_context_change"] = "case2:Failed to extract information from the prompt_for_instruction result using regular expressions"
                     continue
-                name = name[0]
-                if name not in name_list: name_list.append(name)
-                #在definitions中查找name，并存入函数调用关系以及被调用函数的实现
 
+                #在definitions中查找name，并存入函数调用关系以及被调用函数的实现
                 definition_name = next((definition for definition in definitions if definition['name'] == name), None)
+                if not definition_name:
+                    #扩大搜索范围
+                    definitions = contextGenerator.search_definition(name)
+                    definition_name = next((definition for definition in definitions if definition['name'] == name), None)
+                    
                 if definition_name:
                     exist_name = next((call[1] for call in self.calls if call[1] == name), None)
                     if exist_name: #如果已经存在该函数的调用关系，则跳过
                         result["flag_for_context_change"] = "case3:The function name has already existed"
                         continue 
-                    result['prompt_for_context'] = model.prompt_for_context(definition_name['text'])
-                    _, context = model.get_model_response(result['prompt_for_context'])
-                    result["prompt_for_context"] = result["prompt_for_context"].split('\n')
+                    result['prompt_for_summary'] = model.prompt_for_summary(definition_name['text'], self.calls)
+                    _, context = model.get_deepseek_response(result['prompt_for_summary'])
+                    result["prompt_for_summary"] = result["prompt_for_summary"].split('\n')
                     definition_name["context"] = context
-                    self.calls.append((definition_name['caller'], name, definition_name['text'], definition_name['context']))
+                    self.calls.append((definition_name['caller'], name, definition_name['text'], definition_name['context']), details_to_retrieve)
                     flag_for_context_change = True
                     break
                 else:
@@ -141,17 +151,14 @@ class AgentRefiner:
 def process_repo_group(config, repo, records):
     """处理同repo的所有records（Linux优化版）"""
     try:
-        # 计算文件分片索引（0-9）
-        file_idx = int(hashlib.md5(repo.encode()).hexdigest(), 16) % 10
-        output_dir = config['output_path'].rstrip('/')
-        output_file = f"{output_dir}/result_{file_idx}.json"
+        output_file = config['output_path']
 
         # 处理所有records
         results = []
         for record in records:
             id = record['_id']
             try:
-                agent = ReActAgent(config, record)
+                agent = AgentRefiner(config, record)
                 record = agent.process()
                 # 原子化写入操作（追加模式）
                 with open(output_file, "a", encoding="utf-8") as f:
@@ -172,9 +179,9 @@ def main():
     #     "record_path": '/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json'
     # }
     config = {
-        "dataset_path": '/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json',
-        "output_path": '/mnt/ssd2/wangke/CR_data/dataset/map_result/',
-        "record_path": '/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json'
+        "dataset_path": '/mnt/ssd2/wangke/dataset/cr_data/dataset_sorted_llama_instructed_map_deepseek_processed.json',
+        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/map_result.json',
+        "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result.json',
     }
 
     #继续处理未完成的记录
@@ -184,6 +191,7 @@ def main():
 
     # 读取数据集
     with open(config["dataset_path"], "r", encoding="utf-8") as f:
+        # records = [json.loads(line) for line in f]
         records = json.load(f)
         # records = [record for record in records if record["_id"] not in ids]
         print(f"待处理记录数: {len(records)}")
@@ -213,5 +221,5 @@ def main():
             print("失败仓库列表:", ", ".join(failed_repos))
 
 if __name__ == "__main__":
-    # main()
-    pass
+    main()
+    # pass

@@ -78,6 +78,7 @@ def get_comment_info(repo, pull, review):
     for comment in comments:
         if normalize_text(comment['body']) == normalize_text(review):
             return comment,comment['url']
+    return "", ""
 
 def get_comment(review_url):
     headers = {'Authorization': f'token {GITHUB_TOKEN}'}

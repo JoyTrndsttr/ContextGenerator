@@ -31,12 +31,14 @@ class AgentRefiner:
         self.review_info = self.languageContextGenerator.comment
 
     def get_refinement_result(self, with_summary_or_code, with_precise_review_position, clipped_flag):
-        old_without_minus, record, calls, turn, review_info = self.old_without_minus, self.record, self.calls, self.turn, self.review_info
+        old_without_minus, record, calls, turn, review_info, in_file_context_summary = self.old_without_minus, self.record, self.calls, self.turn, self.review_info, self.in_file_context_summary
         max_attempts = 3
         for i in range(max_attempts):
             ablation_result = {"turn": turn, "ablation_info": "", "prompt_for_refinement": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
-            prompt_for_refinement = model.prompt_for_refinement(old_without_minus, record["review"], calls, review_info, with_summary_or_code, with_precise_review_position, clipped_flag)
+            prompt_for_refinement = model.prompt_for_refinement(old_without_minus, record["review"], calls, review_info, with_summary_or_code, with_precise_review_position, clipped_flag, in_file_context_summary)
             new_code, answer = model.get_model_response(prompt_for_refinement)
+            # new_code, think, answer = model.get_full_deepseek_response(prompt_for_refinement)
+            # ablation_result["think"] = think.split('\n')
             ablation_result["prompt_for_refinement"] = prompt_for_refinement.split('\n')
             if not new_code: continue
             new_code_lines = new_code.split('\n')
@@ -73,10 +75,12 @@ class AgentRefiner:
         results = [] #存储每一个turn的结果
         name = "" #存储要检索的函数名
         name_list = [] #存储所有函数名
+        self.in_file_context_summary = ""
         while turn < 6 and flag_for_context_change:
             turn += 1
             self.turn = turn
             print(f"turn: {turn}")
+            # 第四步：Refinement Stage
             if name: contextGenerator.updateSource(name)
             definitions = contextGenerator.getContext()
             result = {"turn": turn, "result_json": "", "prompt_for_instruction": "","flag_for_context_change": "",  "ablation_results": []}
@@ -96,12 +100,50 @@ class AgentRefiner:
             # for i in range(len(result["ablation_results"])):
             #     result["ablation_results"][i]["ablation_info"] = ablation_info[i]
 
-            # 第一步：判断是否要继续寻找information，给出要查找的函数名
+            # 第一步：Instruction Stage
             flag_for_context_change = False    #用于判断模型有没有给出有效的函数名以继续查找context
             max_attempts = 1
             for i in range(max_attempts):
+                result["prompt_for_additional_context_required_estimation"] = model.prompt_for_additional_context_required_estimation(old_without_minus, record["review"])
+                _, think_for_pre_instruction_result_json, pre_instruction_result_json = model.get_full_deepseek_response(result["prompt_for_additional_context_required_estimation"])
+                if not pre_instruction_result_json: 
+                    result["flag_for_context_change"] = "case0:Unable to get the prompt_for_additional_context_required_estimation result_json"
+                    continue
+                in_file_context_required, cross_file_context_required = 0, 0
+                try:
+                    result["think_for_pre_instruction"] = think_for_pre_instruction_result_json.split('\n')
+                    result["pre_instruction_result_json"] = pre_instruction_result_json.split('\n')
+                    additional_context_required = re.search(r'(\d+)', pre_instruction_result_json.split("Additional_context_required")[1]).group(0)
+                    result["reason_for_pre_instruction"] = re.search(r'"Reason"\s*:\s*"((?:[^"\\]|\\.)*)"', pre_instruction_result_json).group(1)
+                    if additional_context_required == "0":
+                        result["flag_for_context_change"] = "case5:LLM does not require additional context"
+                        continue
+                    in_file_context_required = re.search(r'(\d+)', pre_instruction_result_json.split("In_file_context_required")[1]).group(0)
+                    try:
+                        cross_file_context_required = re.search(r'(\d+)', pre_instruction_result_json.split("Cross_file_context_required")[1]).group(0)
+                    except Exception as e:
+                        cross_file_context_required = "0"
+                    purpose_to_retrieve_in_file_context = re.search(r'"Purpose_to_retrieve_in_file_context"\s*:\s*"((?:[^"\\]|\\.)*)"', pre_instruction_result_json).group(1)
+
+                    if in_file_context_required == "1":
+                        in_file_context = contextGenerator._source_code
+                        prompt_for_in_file_context_summary = model.prompt_for_in_file_context_summary(record["review"], in_file_context, purpose_to_retrieve_in_file_context)
+                        _, think_in_file_context_summary, in_file_context_summary = model.get_full_deepseek_response(prompt_for_in_file_context_summary)
+                        result["prompt_for_in_file_context_summary"] = prompt_for_in_file_context_summary.split('\n')
+                        result["think_in_file_context_summary"] = think_in_file_context_summary.split('\n')
+                        try:
+                            in_file_context_summary = re.search(r'"Summary"\s*:\s*"((?:[^"\\]|\\.)*)"', in_file_context_summary).group(1)
+                        except Exception as e:
+                            in_file_context_summary = re.split("Summary")[1]
+                        self.in_file_context_summary = in_file_context_summary
+                        result["in_file_context_summary"] = in_file_context_summary.split('\n')
+                except Exception as e:
+                    result["flag_for_context_change"] = "case7: Failed to analyze the pre_instruction_result_json"
+                    continue
+
+                if cross_file_context_required == "0": continue
                 result["prompt_for_instruction"] = model.prompt_for_instruction(old_without_minus, record["review"], self.calls, review_info, name_list)
-                _, result["result_json"] = model.get_deepseek_response(result["prompt_for_instruction"])
+                _, think, result["result_json"] = model.get_full_deepseek_response(result["prompt_for_instruction"])
                 if not result["result_json"]: 
                     result["flag_for_context_change"] = "case1:Unable to get the prompt_for_instruction result_json"
                     continue
@@ -131,11 +173,18 @@ class AgentRefiner:
                     if exist_name: #如果已经存在该函数的调用关系，则跳过
                         result["flag_for_context_change"] = "case3:The function name has already existed"
                         continue 
-                    result['prompt_for_summary'] = model.prompt_for_summary(definition_name['text'], self.calls)
-                    _, context = model.get_deepseek_response(result['prompt_for_summary'])
+                    self.calls.append((definition_name['caller'], name, definition_name['text'], "<definition_name['context']>" , details_to_retrieve))
+                    result['prompt_for_summary'] = model.prompt_for_summary(record["review"], self.calls)
+                    _, summary = model.get_deepseek_response(result['prompt_for_summary'])
                     result["prompt_for_summary"] = result["prompt_for_summary"].split('\n')
-                    definition_name["context"] = context
-                    self.calls.append((definition_name['caller'], name, definition_name['text'], definition_name['context']), details_to_retrieve)
+                    try:
+                        summary = re.search(r'"Summary"\s*:\s*"((?:[^"\\]|\\.)*)"', summary).group(1)
+                    except Exception as e:
+                        summary = re.split("Summary")[1]
+                    definition_name["context"] = summary
+                    result["summary"] = summary.split('\n')
+                    self.calls.pop()
+                    self.calls.append((definition_name['caller'], name, definition_name['text'], definition_name['context'] , details_to_retrieve))
                     flag_for_context_change = True
                     break
                 else:
@@ -174,15 +223,31 @@ def process_repo_group(config, repo, records):
 
 def main():
     # config = {
-    #     "dataset_path": '/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json',
-    #     "output_path": '/mnt/ssd2/wangke/CR_data/dataset/map_result/',
-    #     "record_path": '/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json'
+    #     "dataset_path": '/mnt/ssd2/wangke/dataset/cr_data/dataset_sorted_llama_instructed_map_deepseek_processed.json',
+    #     "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/map_result.json',
+    #     "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result.json',
+    # }
+    # config = {
+    #     "dataset_path": '/mnt/ssd2/wangke/dataset/cr_data/new_datasets_instructed_map_deepseek_processed.json',
+    #     "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/new_map_result.json',
+    #     "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/new_result.json',
+    # }
+    # config = {
+    #     "dataset_path": '/mnt/ssd2/wangke/dataset/cr_data/new_datasets_instructed_map_deepseek_processed.json',
+    #     "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/new_map_result_deepseek.json',
+    #     "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/new_result_deepseek.json',
+    # }
+    # config = {
+    #     "dataset_path": '/mnt/ssd2/wangke/dataset/cr_data/dataset_sorted_llama_instructed_map_deepseek_processed.json',
+    #     "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/tmp_result.json',
+    #     "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
     # }
     config = {
         "dataset_path": '/mnt/ssd2/wangke/dataset/cr_data/dataset_sorted_llama_instructed_map_deepseek_processed.json',
-        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/map_result.json',
-        "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result.json',
+        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result_4_2.json',
+        # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
     }
+    
 
     #继续处理未完成的记录
     # with open(config["record_path"], "r", encoding="utf-8") as f0:
@@ -195,6 +260,13 @@ def main():
         records = json.load(f)
         # records = [record for record in records if record["_id"] not in ids]
         print(f"待处理记录数: {len(records)}")
+
+    # 测试单个记录
+    # # config["output_path"] = '/mnt/ssd2/wangke/dataset/AgentRefiner/tmp_result.json'
+    # record = [record for record in records if record["_id"] == -576]
+    # # record = [records[1]]
+    # process_repo_group(config, record[0]["repo"], record)
+    # return
 
     # 按repo分组（确保同repo顺序处理）
     repo_map = defaultdict(list)

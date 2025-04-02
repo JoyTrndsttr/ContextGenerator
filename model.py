@@ -84,6 +84,46 @@ def prompt_for_quality_estimation(old, review, new):
     prompt += "\nOnly respond with valid or discarded. No explanations."
     return prompt
 
+def prompt_for_additional_context_required_estimation(old: str, review: str) -> str:
+    prompt = "\nTask Prompt for Determining the Necessity of Additional Context in Code Refinement:"
+    prompt += "\nYou are assigned the task of refining code based on a reviewer’s comment and a provided code diff block."
+    prompt += "\nHowever, in real-world code review scenarios, reviewers often rely on additional repository-level context to make informed decisions."
+    prompt += "\nThis task is designed to help determine whether such additional context is necessary in order to accurately implement the suggested changes."
+
+    prompt += "\n\nDefinitions:"
+    prompt += "\n- In-file context: Information from other parts of the same file as the code block, e.g., checking whether a function is used elsewhere before deleting it."
+    prompt += "\n- Cross-file context: Information from other files in the repository, such as the definition of a varieble/function/class/module referenced but not shown in the current code block."
+
+    prompt += "\n\nTask Inputs:"
+    prompt += f"\nReviewer’s Comment:\n```\n{review}\n```"
+    prompt += f"\nCode Block:\n```\n{old}\n```"
+
+    prompt += "\n\nYour Judging Instructions:"
+    prompt += "\nClassify the intent and specificity of the reviewer’s comment based on the following cases:"
+    prompt += "\n   - Case 1: Clear attitude + Concrete modification → No additional context likely required."
+    prompt += "\n   - Case 2: Unclear attitude + Concrete modification → Guess the intent and assess if context would help resolve ambiguity."
+    prompt += "\n   - Case 3: Clear attitude + Vague modification → Assess if understanding the definition/usage of certain elements from other parts of the codebase would help refine the code."
+    prompt += "\n   - Case 4: Unclear attitude + Vague modification → Combine case 2 & 3; if additional context cannot help, treat as no context required."
+    prompt += "\n   - Case 5: No attitude or modification provided → Treat as no context required."
+
+    prompt += "\n\nOutput Format (in JSON):"
+    prompt += "\n- If additional context is NOT required:"
+    prompt += "\n```json"
+    prompt += "\n{\"Additional_context_required\": 0, \"Reason\": \"<Short explanation>\"}"
+    prompt += "\n```"
+    prompt += "\n- If additional context IS required:"
+    prompt += "\n```json"
+    prompt += "\n{"
+    prompt += "\n  \"Additional_context_required\": 1,"
+    prompt += "\n  \"Reason\": \"<Why additional context is needed>\","
+    prompt += "\n  \"In_file_context_required\": 0 or 1,"
+    prompt += "\n  \"Purpose_to_retrieve_in_file_context\": \"In no more than 50 words, describe what issue or uncertainty in the reviewer’s comment can be resolved by examining other parts of the same file.\","
+    prompt += "\n  \"Cross_file_context_required\": 0 or 1"
+    prompt += "\n}"
+    prompt += "\n```"
+
+    return prompt
+
 def prompt_for_classifier(old, review, new):
     prompt = "\nYou are a experienced researcher majoring in code review tasks. In a pull request, you discover that there are senarios where the the review is not related to the code changes. Additionally, a developer should modify the code based on the review in a code refinement task. When he/she encounters a identifier of which he/she forgets the utility, he/she would search its usage in the repository. You should tell if this context is need to correctly modify the code based on the review."
     prompt += "\nTo evaluate the relevance between the review and code diff, as well as the extent of the context dependency, you should provide a \'Relevance Score\' and a \'Context Dependency Score\' each ranging from 0 to 10 and explain the reason behind the score. Here are some examples."
@@ -125,7 +165,7 @@ def prompt_for_instruction(old_without_minus, review, calls, review_info, name_l
         prompt += "\nRepository Context:"
         prompt += "\nBased on the review, you checked the source code and find that :"
         for call in calls:
-            caller, callee, callee_text, callee_context = call
+            caller, callee, callee_text, callee_context, callee_purpose = call
             callee_text_list = callee_text.split('\n')
             if len(callee_text_list) > 40:
                 concise_callee_text = ""
@@ -155,52 +195,7 @@ def prompt_for_instruction(old_without_minus, review, calls, review_info, name_l
     prompt += "\n{\n\"Additional_context_required\": \"Enter 1 (yes) if project-specific knowledge is essential, or 0 (no) if not\",\n\"Element_name_to_retrieve\": \"List the most important project-specific function or variable that need to be retrieved\",\n\"Details_to_retrieve\": \"A sentence less than 50 words to specify what information is needed from the element, such as function parameters, purpose, return values, operations performed.And explain why it is important to retrieve this information.\"}"
     return prompt
 
-# def prompt_for_instruction(old_without_minus, review, calls, review_info, name_list):
-#     prompt = "As a developer, your pull request receives a reviewer's comment on " \
-#               "a specific piece of code that requires a change.In order to make " \
-#               "changes based on the review,you need to refer back to the original code. " \
-#               "You should provide the code implementation of which function you'd most "\
-#               "like to refer to.\n"
-#     prompt += "The old code being referred to in the hunk of code changes is:\n"
-#     prompt += "```\n{}\n```\n".format(old_without_minus)
-#     if not review_info or not review_info.get("review_position_line", None):
-#         prompt += "The code review for this code is:\n"
-#     else:
-#         if review_info.get("review_hunk_start_line", None):
-#             prompt += f"The reviewer commented on the code from line '{review_info['review_hunk_start_line']}' to line '{review_info['review_position_line']}':\n"
-#         else: prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
-#     prompt += review
-#     if len(calls) > 0:
-#         prompt += "\nBased on the review, you checked the source code and find that :"
-#         for call in calls:
-#             caller, callee, callee_text, callee_context = call
-#             callee_text_list = callee_text.split('\n')
-#             if len(callee_text_list) > 20:
-#                 concise_callee_text = ""
-#                 concise_callee_text += callee_text_list[0] + "\n"
-#                 for callee_text_line in callee_text_list[1:]:
-#                     if callee_text_line.find("def") != -1 :
-#                         concise_callee_text += callee_text_line + "\n"
-#             if caller == callee or caller == "default_function": 
-#                 if len(callee_text_list) > 20:
-#                     prompt += f"\nThe concise definition of \n{callee} is:\n```\n{concise_callee_text}\n``` "
-#                 else:
-#                     prompt += f"\n{callee} is defined as:\n```\n{callee_text}\n```"
-#             else :
-#                 if len(callee_text_list) > 20:
-#                     prompt += f"\n{caller} calls {callee}, and the concise definition of {callee} is:\n```\n{concise_callee_text}\n``` "
-#                 else:
-#                     prompt += f"\n{caller} calls {callee} which is defined as:\n```\n{callee_text}\n```"
-#     if len(name_list) > 0:
-#         name_str = "Notify the following functions have been checked:"
-#         for name in name_list:
-#             name_str += f"{name}, "
-#         prompt += f"\n{name_str[:-2]}"
-#     prompt += "\nPlease provide the name appears in the source code that have not yet been checked and explain why you chose it. Format your response"\
-#               " as a JSON object:```{ \"function_name\": \"<function_name>\", \"reason\": \"<reason>\" }```"
-#     return prompt
-
-def prompt_for_refinement(old_without_minus, review, calls, review_info, with_summary_or_code, with_presice_review_position, clipped_flag):
+def prompt_for_refinement(old_without_minus, review, calls, review_info, with_summary_or_code, with_presice_review_position, clipped_flag, in_file_context_summary):
     prompt = ""
     prompt += "As a developer, imagine you've submitted a pull request and" \
               " your team leader requests you to make a change to a piece of code." \
@@ -213,13 +208,16 @@ def prompt_for_refinement(old_without_minus, review, calls, review_info, with_su
             prompt += f"The reviewer commented on the code from line '{review_info['review_hunk_start_line']}' to line '{review_info['review_position_line']}':\n"
         else: prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
     prompt += review
+    if in_file_context_summary:
+        prompt += "\nBased on the review, you checked the file where the old code is located and find that:"
+        prompt += "\n```\n{}\n```\n".format(in_file_context_summary)
     if len(calls) > 0:
-        prompt += "\nBased on the review, you checked the source code and find that :"
+        prompt += "\nBased on the review, you checked the repository and find that :\n"
         if with_summary_or_code == 'summary':
             prompt += calls[-1][3]
         else:
             for call in calls:
-                caller, callee, callee_text, callee_context = call
+                caller, callee, callee_text, callee_context, callee_purpose = call
                 callee_text_list = callee_text.split('\n')
                 if len(callee_text_list) > 20:
                     concise_callee_text = '\n'.join(callee_text_list[:20])
@@ -247,63 +245,8 @@ def prompt_for_refinement(old_without_minus, review, calls, review_info, with_su
         prompt += f"Specifically,if not required by the review, your code should start with:\"{line_start}\" and end with:\"{line_end}\""
     return prompt
 
-# def prompt_for_refinement(old_without_minus, review, calls, review_info, with_summary_or_code, with_presice_review_position, clipped_flag):
-#     prompt = ""
-#     prompt += "As a developer, imagine you've submitted a pull request and" \
-#               " your team leader requests you to make a change to a piece of code." \
-#               " The old code being referred to in the hunk of code changes is:\n"
-#     prompt += "```\n{}\n```\n".format(old_without_minus)
-#     if not with_presice_review_position or not review_info or not review_info.get("review_position_line", None):
-#         prompt += "The code review for this code is:\n"
-#     else:
-#         if review_info.get("review_hunk_start_line", None):
-#             prompt += f"The reviewer commented on the code from line '{review_info['review_hunk_start_line']}' to line '{review_info['review_position_line']}':\n"
-#         else: prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
-#     prompt += review
-#     if len(calls) > 0:
-#         prompt += "\nBased on the review, you checked the source code and find that :"
-#         for call in calls:
-#             caller, callee, callee_text, callee_context = call
-#             callee_text_list = callee_text.split('\n')
-#             if len(callee_text_list) > 20:
-#                 concise_callee_text = '\n'.join(callee_text_list[:20])
-#             match = re.match(r'^\s*def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)\s*:.*$', callee_text_list[0])
-#             signature = f"{match.group(1)}({match.group(2)})" if match else callee
-#             main_purpose = callee_context.split('Summary:')
-#             main_purpose = main_purpose[1].strip() if len(main_purpose) > 1 else callee_context
-            
-#             if caller == callee or caller == "default_function": 
-#                 if with_summary_or_code == 'code':
-#                     if len(callee_text_list) > 20:
-#                         prompt += f"\nThe first 20 lines of {signature} are implemented as follows:\n```\n{concise_callee_text}\n``` "
-#                     else:
-#                         prompt += f"\n{signature} is defined as:\n```\n{callee_text}\n```"
-#                 elif with_summary_or_code =='summary':
-#                     prompt += f"\nThe detail information of {signature} is: \n{main_purpose}"
-#             else :
-#                 if with_summary_or_code == 'code':
-#                     if len(callee_text_list) > 20:
-#                         prompt += f"\n{caller} calls {signature}, and the first 20 lines of {signature} are implemented as follows:\n```\n{concise_callee_text}\n``` "
-#                     else:
-#                         prompt += f"\n{caller} calls {signature} which is defined as:\n```\n{callee_text}\n```"
-#                 elif with_summary_or_code =='summary':
-#                     prompt += f"\n{caller} calls {signature}, and the detail information of {signature} is: \n{main_purpose}"
-#     prompt += "\nPlease generate the revised code according to the review. " \
-#               "Please ensure that the revised code follows the original code format" \
-#               " and comments, unless it is explicitly required by the review."
-#     if clipped_flag:
-#         line_start = old_without_minus.split("\n")[0]
-#         if line_start.strip() == "": line_start = old_without_minus.split("\n")[1]
-#         line_end = old_without_minus.split("\n")[-1]
-#         prompt += f"Specifically,if not required by the review, your code should start with:\"{line_start}\" and end with:\"{line_end}\""
-#     return prompt
-
 def prompt_for_context(text):
     prompt = ""
-    # prompt += "Try to summarize the class or function about the following text, your summary should include the"\
-    #           " function signature, parameters, return type, and main purpose with no more than 100 words."\
-    #           "format your response as:\nSignature and Parameters: <function_signature>\nReturn Type:"\
-    #           " <return_type>\nMain Purpose: <purpose>\n"
     prompt += "Try to summarize the class or function about the following text, your summary should include at least"\
               " the return type and main purpose with no more than 100 words."\
               "format your response as Summary: <Your Summary>\n"
@@ -319,11 +262,6 @@ def prompt_for_summary(review, calls):
     
     prompt += "\n\nInstructions:"
     prompt += f"\nReviewer's Comment: \n```\n{review}\n```"
-
-    prompt += "\nDetailed Reasoning and Analysis Process:"
-    prompt += "\nStep 1: Analyze the reviewer's comment to infer the intended modifications or concerns."
-    prompt += "\nStep 2: Examine each function call to determine its relevance and potential impact on the proposed changes, focusing on why each function's specific characteristics are significant for the code's adaptation."
-
     for i, call in enumerate(calls, start=1):
         if call[0] == call[1]:
             prompt += f"\nCallee {i}: {call[0]}\n```"
@@ -331,6 +269,9 @@ def prompt_for_summary(review, calls):
         prompt += f"\nCallee Implementation: \n```\n{call[2]}\n```"
         prompt += f"\nPurpose to Check This Callee: {call[4]}"
 
+    prompt += "\nDetailed Reasoning and Analysis Process:"
+    prompt += "\nStep 1: Analyze the reviewer's comment to infer the intended modifications or concerns."
+    prompt += "\nStep 2: Examine each function call to determine its relevance and potential impact on the proposed changes, focusing on why each function's specific characteristics are significant for the code's adaptation."
     prompt += "\n\nOutput Requirements:"
     prompt += "\nProvide a concise and targeted summary less than 100 words as a response to the requirements about the relevant context information."
     prompt += "\nFocus on information that directly supports the necessary code changes, highlighting how each detail aids in achieving the code review's goals."
@@ -338,6 +279,28 @@ def prompt_for_summary(review, calls):
 
     return prompt
 
+def prompt_for_in_file_context_summary(review, in_file_context, purpose):
+
+    prompt = "\nTask Prompt for Summarizing In-File Context in Code Review Based on Function Calls:"
+    prompt += "\nAs an experienced software developer, you have received a code review comment that necessitates changes in your code."
+    prompt += "\nTo fully understand the comment and refine your code, you retrieved the in-file context, specifically the entire source code where the previous code changes are located."
+    prompt += "\nIn-file context is information from other parts of the same file as the code block. There are senarios where the in-file context is necessary for implementing the suggested changes effectively, e.g., checking whether a function is used elsewhere before deleting it."
+    prompt += "\nNow, your task is to summarize the in-file context and response to the purpose for retrieving the context."
+    
+    prompt += "\n\nInstructions:"
+    prompt += f"\nReviewer's Comment: \n```\n{review}\n```"
+    prompt += f"\nPurpose to Retrieve In-File Context: \n```\n{purpose}\n```"
+    prompt += f"\nIn-File Context: \n```\n{in_file_context}\n```"
+    
+    prompt += "\nDetailed Reasoning and Analysis Process:"
+    prompt += "\nStep 1: Analyze the reviewer's comment to infer the intended modifications or concerns."
+    prompt += "\nStep 2: Summarize the in-file context and response to the purpose for retrieving the context."
+    prompt += "\n\nOutput Requirements:"
+    prompt += "\nProvide a concise and targeted summary less than 100 words as a response to the requirements about the in-file context information."
+    prompt += "\nFocus on information that directly supports the necessary code changes, highlighting how each detail aids in achieving the code review's goals."
+    prompt += "\nFormat your response as a JSON object: {\"Summary\": <Your Summary>}"
+
+    return prompt
 
 def get_model_response(prompt,temperature=0):
     answer = model.get_completion([prompt])
@@ -350,6 +313,10 @@ def get_model_response(prompt,temperature=0):
 def get_deepseek_response(prompt):
     code, _, answer = deepseek_model.request_deepseek(prompt)
     return code, answer
+
+def get_full_deepseek_response(prompt):
+    code, think, answer = deepseek_model.request_deepseek(prompt)
+    return code, think, answer
 
 def calc_em_and_bleu(new, new_code):
     new_without_plus = remove_prefix(new)

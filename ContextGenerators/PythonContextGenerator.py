@@ -8,6 +8,7 @@ class PythonContextGenerator:
         self.parser = parser
         self.tree = node
         self.source_code = source_code
+        self._source_code = source_code #用于存储原始代码
         self.file_path = file_path
         self.code_diff = code_diff
         self.repo_name = repo_name
@@ -45,7 +46,7 @@ class PythonContextGenerator:
         self.name_list = []
         self.find_node_by_range(self.tree)
         self.definitions = []
-        self.pricise_definitions = []
+        self.precise_definitions = []
         self.calls = [] #存储调用关系，元组形式(调用函数名，被调用函数名)
         self.file_paths = [] #检索范围
         self.file_paths.append(self.file_path)
@@ -72,6 +73,8 @@ class PythonContextGenerator:
         try:
             with open(definition.module_path._str, 'r', encoding='utf-8') as f:
                 file_source_code = f.read().split('\n')
+                if definition.type == "module":
+                    return '\n'.join(file_source_code), 0, len(file_source_code)-1
                 start = definition.line - 1
                 end  = start + 1
                 # while end<len(file_source_code)-2 and not (count_indent(file_source_code[start])==count_indent(file_source_code[end]) and not file_source_code[end]==''):
@@ -96,7 +99,7 @@ class PythonContextGenerator:
             path = definition.full_name if definition.full_name else definition.module_name
             type = definition.type
             text, start, end = self.get_definition_text_info(definition)
-            return {'name': name, 'path': path, 'type': type, 'text': text} , definition   
+            return {'name': name, 'path': path, 'type': type, 'text': text, 'caller': name} , definition   
         return None, None
 
     def getContext(self):
@@ -110,13 +113,13 @@ class PythonContextGenerator:
                     if definition['name'] not in self.name_list:
                         definition['caller'] = current_function
                         # self.context.setdefault(current_function,[]).append(definition) #仅包含四个元素的definition对象
-                        self.pricise_definitions.append(definition) #包含五个元素的definition对象
+                        self.precise_definitions.append(definition) #包含五个元素的definition对象
                         # self.precise_context.setdefault(current_function,[]).append({'name': definition['name'], 'type': definition['type']})
                         self.definitions.append(_definition) #完整版的definition对象
                         self.name_list.append(definition['name']) #用于去重
                         self.calls.append((current_function, definition['name'])) #存储调用关系
         # print(self.context)
-        return self.pricise_definitions
+        return self.precise_definitions
     
     def updateSource(self, name):
         #根据name找到对应的definition,更新self的参数以获取进一步的context
@@ -154,26 +157,24 @@ class PythonContextGenerator:
         for path in self.file_paths:
             with open(path, 'r', encoding='utf-8') as f:
                 source_code = f.read()
-                script = jedi.Script(source_code, path=path)
+                # script = jedi.Script(source_code, path=path)
+                self.source_code = source_code
+                self.file_path = path
                 positions = []
                 #在整个source_code中寻找name出现的行号和列号
                 for i, line in enumerate(source_code.split('\n')):
                     column = line.find(name)
                     if column != -1:
-                        positions.append((i+1, column + 1))
+                        positions.append((i, column))
                 #根据行号和列号找到definition
                 for position in positions:
-                    definitions = script.goto(position[0], position[1], follow_imports=True)
-                    if not definitions: continue
+                    definition, _definition = self.find_definition(position)
+                    if not definition: continue
                     else:
-                        definition = definitions[0]
-                        self.definitions.append(definition)
-                        return self.definitions
-
-        
-
-
-        
-
-
-        
+                        self.definitions.append(_definition)
+                        if definition['name'] not in self.name_list:
+                            self.precise_definitions.append(definition)
+                        self.name_list.append(definition['name']) #用于去重
+                        self.calls.append((definition['name'], definition['name'])) #存储调用关系
+                        return self.precise_definitions
+        return self.precise_definitions

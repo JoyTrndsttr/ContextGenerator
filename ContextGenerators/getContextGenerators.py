@@ -66,14 +66,11 @@ class LanguageContextGenerator:
         if self.comment:
             diff_hunk_lines = self.comment["diff_hunk"].split('\n')
             try:
-                start = int(re.search(r'(\d+)', diff_hunk_lines[0]).group(1))
-                if self.comment["original_start_line"]:
+                # start = int(re.search(r'(\d+)', diff_hunk_lines[0]).group(1))
+                start = int(re.findall(r'(\d+)', diff_hunk_lines[0])[2])
+                if self.comment["original_start_line"] and self.comment["original_start_line"]-start+1 < len(diff_hunk_lines):
                     self.comment["review_hunk_start_line"] = diff_hunk_lines[self.comment["original_start_line"]-start+1][1:] #加1是因为第一行是code_diff_hunk的prefix
                 index = len(diff_hunk_lines)-1 # 指向review_position_line
-                # if self.comment["original_position"] > len(diff_hunk_lines):
-                #     if self.comment["original_line"]: index = self.comment["original_line"]-start+1
-                #     else: raise Exception("original_position is out of range and original_line is not provided")
-                # else: index = self.comment["original_position"]
                 for i in range(index, -1, -1):
                     line = diff_hunk_lines[i][1:]
                     if line:

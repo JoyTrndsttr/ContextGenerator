@@ -1,29 +1,28 @@
 import json
 import model
-with open('/mnt/ssd2/wangke/dataset/AgentRefiner/result_4_2.json', 'r') as f:
-# with open('/mnt/ssd2/wangke/dataset/AgentRefiner/new_map_result.json', 'r') as f:
+with open('/mnt/ssd2/wangke/dataset/AgentRefiner/result_4_6.json', 'r') as f:
+# with open('/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/CR_and_CRN.json', 'r') as f:
+# with open('/mnt/ssd2/wangke/dataset/AgentRefiner//mnt/ssd2/wangke/dataset/AgentRefiner/datasets/CR_and_CRN.json.json', 'r') as f:
 # with open('/mnt/ssd2/wangke/dataset/AgentRefiner/new_map_result_deepseek.json', 'r') as f:
-# with open('/mnt/ssd2/wangke/dataset/AgentRefiner/map_result.json', 'r') as f:
     records = [json.loads(line) for line in f]
     score = []
     model_score = [0,0,0,0]
     gpt_score = [0,0,0,0]
-    for i in range(6):
+    for i in range(7):
         turn_result = []
         turn_result.append(0)
         for i in range(8):
             turn_result.append([0,0,0,0])
         score.append(turn_result)
     abort_analysis_result = {
-        "case1:Unable to get the prompt_for_instruction result_json": 0,
-        "case2:Failed to extract information from the prompt_for_instruction result using regular expressions": 0,
-        "case3:The function name has already existed":0,
-        "case4:Unable to find the definition of the function name":0,
-        "case5:LLM does not require additional context":0,
-        "case7: Failed to analyze the pre_instruction_result_json":0,
-        "case0:Unable to get the prompt_for_additional_context_required_estimation result_json":0,
-
-
+        "case:Unable to get the prompt_for_instruction result_json": 0,
+        "case:Failed to extract information from the prompt_for_instruction result using regular expressions": 0,
+        "case:The function name has already existed":0,
+        "case:Unable to find the definition of the function name":0,
+        "case:LLM does not require additional context":0,
+        "case: Failed to analyze the pre_instruction_result_json":0,
+        "case:Unable to get the prompt_for_additional_context_required_estimation result_json":0,
+        "case:No additional context required":0
     }
     ablation_info = [
         "Summary_cut_precise",
@@ -45,17 +44,21 @@ with open('/mnt/ssd2/wangke/dataset/AgentRefiner/result_4_2.json', 'r') as f:
         if not record.get("id", None): record["id"] = record["_id"]
         # if not record["id"] > 0 : continue
         # if record["id"] > 0 : continue
-        if len(results) == 0: continue
-        if len(results) == 1: continue
+        # if len(results) == 0: continue
+        # if len(results) == 1: continue
 
-        # model_score[0] += record["model_em"]
-        # model_score[1] += record["model_em_trim"]
-        # model_score[2] += record["model_bleu"]
-        # model_score[3] += record["model_bleu_trim"]
-        # gpt_score[0] += record["gpt_em"]
-        # gpt_score[1] += record["gpt_em_trim"]
-        # gpt_score[2] += record["gpt_bleu"]
-        # gpt_score[3] += record["gpt_bleu_trim"]
+        #将results[0]从results中删除，后面的元素往前移一位,将删除的元素赋值给_result
+        # _result = results[0]
+        # results.pop(0)
+
+        model_score[0] += record["model_em"]
+        model_score[1] += record["model_em_trim"]
+        model_score[2] += record["model_bleu"]
+        model_score[3] += record["model_bleu_trim"]
+        gpt_score[0] += record["gpt_em"]
+        gpt_score[1] += record["gpt_em_trim"]
+        gpt_score[2] += record["gpt_bleu"]
+        gpt_score[3] += record["gpt_bleu_trim"]
 
         turn = -1
         ablation_length = len(results[0].get("ablation_results", []))
@@ -69,6 +72,12 @@ with open('/mnt/ssd2/wangke/dataset/AgentRefiner/result_4_2.json', 'r') as f:
         #     # print(f"id:{record['_id']};new_code_flag:{new_code_flag}")
         #     print(f"id:{record['id']};new_code_flag:{new_code_flag}")
         #     continue
+
+        new_line = record["new"].split("\n")
+        new_line_add_flag = False
+        for line in new_line:
+            if line.startswith('+') : new_line_add_flag = True
+        if not new_line_add_flag: continue
         
         
         for result in results:
@@ -87,7 +96,7 @@ with open('/mnt/ssd2/wangke/dataset/AgentRefiner/result_4_2.json', 'r') as f:
                 abort_analysis_result[abort_analysis] += 1
             
             # if not result.get("new_code"): continue
-            turn = result['turn'] - 1
+            turn = result['turn']
             
             score[turn][0] += 1
             ablation_results_len = len(result.get("ablation_results", []))
@@ -150,10 +159,10 @@ with open('/mnt/ssd2/wangke/dataset/AgentRefiner/result_4_2.json', 'r') as f:
         print(f"{key}:{value}")
     
     count = score[0][0]
-    # print(f"model_em:{model_score[0]/count}, model_em_trim:{model_score[1]/count}, model_bleu:{model_score[2]/count}, model_bleu_trim:{model_score[3]/count}")
-    # print(f"gpt_em:{gpt_score[0]/count}, gpt_em_trim:{gpt_score[1]/count}, gpt_bleu:{gpt_score[2]/count}, gpt_bleu_trim:{gpt_score[3]/count}")
+    print(f"model_em:{model_score[0]/count}, model_em_trim:{model_score[1]/count}, model_bleu:{model_score[2]/count}, model_bleu_trim:{model_score[3]/count}")
+    print(f"gpt_em:{gpt_score[0]/count}, gpt_em_trim:{gpt_score[1]/count}, gpt_bleu:{gpt_score[2]/count}, gpt_bleu_trim:{gpt_score[3]/count}")
 
-    # with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_negative_deepseek.json', 'w') as f:
+    # # with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_negative_deepseek.json', 'w') as f:
     with open('/mnt/ssd2/wangke/dataset/cr_data/case_study.json', 'w') as f:
         print(f"len(ids):{len(ids)}")
         records = [record for record in records if record["_id"] in ids]

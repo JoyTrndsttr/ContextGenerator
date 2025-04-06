@@ -9,8 +9,11 @@ import model
 # with open('/mnt/ssd2/wangke/dataset/cr_data/dataset_sorted_llama_instructed_processed.json', 'r') as f:
 # with open('/mnt/ssd2/wangke/dataset/cr_data/dataset_sorted_llama_instructed_map_deepseek_processed.json', 'r') as f:
 #     records = json.load(f)
-with open('/mnt/ssd2/wangke/dataset/AgentRefiner/map_result.json', 'r') as f:
+# with open('/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/CR_and_CRN.json', 'r') as f:
+with open('/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/CR_and_CRN_estimated.json', 'r') as f:
+# with open('/mnt/ssd2/wangke/dataset/AgentRefiner/map_result.json', 'r') as f:
     records = [json.loads(line) for line in f]
+    records = [record for record in records if record["repo_context_dependency_estimation"]["Additional_context_required"]=="1"]
     
 # with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek.json', 'r') as f:
 # with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_ablation_deepseek2.json', 'r') as f:

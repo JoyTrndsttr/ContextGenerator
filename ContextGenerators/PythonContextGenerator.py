@@ -169,6 +169,7 @@ class PythonContextGenerator:
                 #根据行号和列号找到definition
                 for position in positions:
                     definition, _definition = self.find_definition(position)
+                    definition['name'] = name #有时候会有import A as B的情况
                     if not definition: continue
                     else:
                         self.definitions.append(_definition)

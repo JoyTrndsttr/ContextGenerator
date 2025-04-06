@@ -34,8 +34,8 @@ def prompt_for_repo_context_dependency_estimation(old_code: str, review: str, ne
     prompt += "\nHowever, the tool is allowed to query an Agent that **can** access the repository to retrieve helpful context before modifying the code."
 
     prompt += "\nThere are two types of context the Agent can query:"
-    prompt += "\n- In-file context: other parts of the same file as the code block (e.g., checking if a function is used elsewhere in the file)."
-    prompt += "\n- Cross-file context: elements defined in other files (e.g., functions, classes, variables, modules)."
+    prompt += "\n- **In-file context**: other parts of the same file as the code block (e.g., checking if there is a helper function *outside* the current code block that could be used to improve or replace code in this block)."
+    prompt += "\n- **Cross-file context**: elements defined in other files (e.g., functions, classes, variables, modules)."
 
     prompt += "\nThe refinement is only considered successful if the tool, without seeing the ground truth, can transform the code block to exactly match the ground truth."
 
@@ -44,28 +44,27 @@ def prompt_for_repo_context_dependency_estimation(old_code: str, review: str, ne
     prompt += "\n\nTo make this decision, follow these steps:"
 
     prompt += "\n1. **Compare the original code block and the ground truth**:"
-    prompt += "\n   - If the change is a simple deletion or modify document/comment or name/format convention, etc., context is likely not needed."
-    prompt += "\n   - If the change involves modifications or additions about bugs/new features, etc., context may be needed."
+    prompt += "\n   - Use line prefixes to interpret changes: lines starting with `-` are deletions; lines starting with `+` are additions."
+    prompt += "\n   - Deletion operations typically do not require context."
+    prompt += "\n   - Additions and modifications are more likely to require context, especially if they introduce new logic, data structures, or features."
 
-    prompt += "\n2. **Analyze the reviewer’s comment**:"
-    prompt += "\n   - Focus on what change is being suggested, not whether a change is needed."
-    prompt += "\n   - If the review directly provides a suggestion like:"
-    prompt += "\n     ```\n{suggestion_revised_code}\n```"
-    prompt += "\n     and the ground truth simply applies that suggestion, then no context is needed."
+    prompt += "\n2. **Analyze the reviewer’s comment and its relevance to the change**:"
+    prompt += "\n   - Focus on what concrete change is being suggested in the comment, not whether a change is necessary."
+    prompt += "\n   - For example, if the review discusses whether it is necessary to delete or refactor a specific piece of code, your responsibility is to focus only on *how* to perform the operation if it were to be done."
+    prompt += "\n   - If the review inspired the key additions or modifications in the ground truth, then it likely guided the refinement."
+    prompt += "\n   - If the review does not relate to the observed changes at all, then context is likely not needed for this sample."
 
     prompt += "\n3. **Identify new elements introduced in the change**:"
-    prompt += "\n   - If the change adds or modifies a function, variable, class, or module name that does NOT appear in the original code block or review comment, and"
-    prompt += "\n   - This element is very likely defined elsewhere in the project (not a Python built-in),"
-    prompt += "\n   - Then repository context is likely required."
+    prompt += "\n   - Focus on added lines (`+`) in the ground truth. Extract any newly introduced identifiers such as functions, classes, variables, or module names."
+    prompt += "\n   - Do **not** consider natural language content like comments or docstrings as new elements for this purpose."
+    prompt += "\n   - If the new element **also appears** in the code block or the review comment (as an exact token match), it likely does **not** require additional context."
+    prompt += "\n   - If the new element appears in neither the code block nor the review comment, but is clearly inferred from an existing element's name or usage (e.g., calling a function likely related to an identifier in the original block), then context is **more likely** required."
+    prompt += "\n   - Exclude Python built-in names from consideration."
 
-    prompt += "\n4. **Check the relevance of the review comment to the change**:"
-    prompt += "\n   - If the review has no meaningful influence on the ground truth change, context is not required."
-    prompt += "\n   - If the review leads to a change that introduces external elements, context may be required."
-    
-    prompt += "\nHere is the code block under review:"
+    prompt += "\n\nHere is the code block under review:"
     prompt += f"\n```\n{old_code}\n```"
-    prompt += f"\nAnd the review is {review}: "
-    prompt += "\nHere is the ground truth:"
+    prompt += f"\nThe reviewer’s comment is:\n```\n{review}\n```"
+    prompt += "\nHere is the ground truth revision:"
     prompt += f"\n```\n{new_code}\n```"
 
     prompt += "\n\nOutput Format (in JSON):"
@@ -78,25 +77,33 @@ def prompt_for_repo_context_dependency_estimation(old_code: str, review: str, ne
 
     return prompt
 
-
 def prompt_for_additional_context_required(old: str, review: str) -> str:
-    prompt = "\nTask Prompt: Decide Whether You Need Additional Context to Refine a Problematic Code Block You Previously Commented On"
+    prompt = "\nTask Prompt: Decide Whether You, an Automated Code Review Tool, Need Additional Context to Refine a Problematic Code Block"
 
-    prompt += "\nYou are a code reviewer who previously left the following comment on a pull request:"
+    prompt += "\nYou are an automated code review tool. You have received the following reviewer comment:"
     prompt += f"\n```\n{review}\n```"
-    prompt += "\nThe code block that prompted your comment is:"
+
+    prompt += "\nThe comment refers to the following code block (diff hunk):"
     prompt += f"\n```\n{old}\n```"
 
-    prompt += "\nNow, because your teammate is busy, you want to refine the code yourself."
-    prompt += "\nHowever, you can only see this specific code block (diff hunk) and do NOT have access to other parts of the codebase."
-    prompt += "\nYou may consider asking your teammate to look up some information for you—but only if it is highly helpful for making a correct change."
+    prompt += "\nYour job is to refine this code based on the reviewer’s intent and the code block alone."
+
+    prompt += "\nHowever, unlike a human developer, you do **not** have direct access to the rest of the source code repository."
+
+    prompt += "\nWhen necessary, you may ask questions to an **Agent** that is capable of accessing the full repository and retrieving helpful context for you."
+
+    prompt += "\nYou should only ask the Agent for help if you believe that resolving your uncertainty will significantly affect your ability to make a correct code change."
+
+    prompt += "\nThere are two types of context you may ask about:"
+    prompt += "\n- **In-file context**: Information from other parts of the *same file* as the code block. For example, the file might define a helper function *outside* the current code block that could be used to improve or replace code in this block."
+    prompt += "\n- **Cross-file context**: Information defined in *other files* of the repository, such as how a function, variable, class, or module is implemented."
+
+    prompt += "\nYour analysis should focus on:"
+    prompt += "\n- **What specific change is being suggested** in the reviewer’s comment — not whether that change is necessary."
+    prompt += "\n  For example, even if the comment questions whether it’s worth deleting or refactoring a piece of code, you should assume the change will be made and focus on *how* to implement it."
+    prompt += "\n- **Whether the changes in this code block align with the reviewer’s intent** — you do not need to consider how it affects the rest of the codebase."
+    prompt += "\n  For example, if the comment suggests renaming an element, you don’t need to check for downstream breakage — those will be handled in future commits."
     
-    prompt += "\nThere are two types of questions you can ask:"
-    prompt += "\n- In-file context: You want to check other parts of the *same file* that might affect how you change the current code. For example, you want to delete a function, but you are unsure if it’s called elsewhere in this file."
-    prompt += "\n- Cross-file context: You need to know how a function/variable/class/module is defined or implemented, but suspect it’s defined in another file (due to modularization)."
-
-    prompt += "\nOnly ask for this context if it is important for making a correct change, and you should focus on what change is being suggested in the review, not whether a change is needed."
-
     prompt += "\n\nOutput Format (in JSON):"
     prompt += "\n```json"
     prompt += "\n{"
@@ -110,28 +117,33 @@ def prompt_for_additional_context_required(old: str, review: str) -> str:
     return prompt
 
 def prompt_for_in_file_context_summary(review: str, source_code: str, question: str) -> str:
-    prompt = "\nTask Prompt: Summarize In-File Context to Help a Reviewer Resolve Their Question"
+    prompt = "\nTask Prompt: You Are an Agent Summarizing In-File Context to Support Automated Code Refinement"
 
-    prompt += "\nYou are assisting a teammate (the reviewer) who is refining a pull request."
-    prompt += "\nThey wrote the following code review comment:"
+    prompt += "\nYou are an intelligent Agent that assists an automated code review tool."
+    prompt += "\nThe tool received the following review comment as guidance for how to improve a code block:"
     prompt += f"\n```\n{review}\n```"
 
-    prompt += "\nThey are trying to make a specific change, but need additional information from the rest of the file where the code block appears."
+    prompt += "\nThe tool is attempting to modify the code block accordingly, but it does not have access to the full file."
+    prompt += "\nIt has asked you to answer the following question, which it generated in order to better understand the context needed for this change:"
+    prompt += f"\n```\n{question}\n```"
 
-    prompt += f"\nThey've asked the following question:\n```\n{question}\n```"
-
-    prompt += "\nYou have access to the **entire file** that contains the relevant code block. Its contents are shown below:"
+    prompt += "\nYou do have access to the **entire source file** that contains the code block in question. The contents of the file are:"
     prompt += f"\n```\n{source_code}\n```"
 
+    prompt += "\nYour analysis should focus on:"
+    prompt += "\n- **What specific change is being suggested** in the reviewer’s comment — not whether that change is necessary."
+    prompt += "\n  For example, even if the comment questions whether it’s worth deleting or refactoring a piece of code, you should assume the change will be made and focus on *how* to implement it."
+    prompt += "\n- **Whether the changes in this code block align with the reviewer’s intent** — you do not need to consider how it affects the rest of the codebase."
+    prompt += "\n  For example, if the comment suggests renaming an element, you don’t need to check for downstream breakage — those will be handled in future commits."
+
     prompt += "\n\nYour task:"
-    prompt += "\n- Carefully read through the file and locate any information that helps answer the question."
-    prompt += "\n- Focus on providing only the parts of the file that are directly relevant to the question."
-    prompt += "\n- And you should focus on what change is being suggested in the review, not whether a change is needed."
+    prompt += "\n- Analyze the full file to locate any information relevant to answering the tool’s question."
+    prompt += "\n- Focus on parts of the file that help clarify or support what change is being suggested in the review."
+    prompt += "\n- Your summary should only include information that helps the tool decide *how* to modify the current code block correctly based on file-level context."
 
     prompt += "\n\nOutput Format:"
-    prompt += "\n- Your response should be under 100 words."
-    prompt += "\n- Be clear, specific, and directly address the question."
-    prompt += "\n- Format your output as a JSON object like this:"
+    prompt += "\n- Provide a clear and concise summary (less than 100 words) that directly addresses the tool’s question."
+    prompt += "\n- Format your output as a JSON object:"
     prompt += "\n```json"
     prompt += "\n{\"Summary\": \"<your summary here>\"}"
     prompt += "\n```"
@@ -189,30 +201,32 @@ def prompt_for_refinement(old_without_minus, review, calls, review_info, with_su
     return prompt
 
 def prompt_for_cross_file_context_request(old_without_minus: str, review: str, question: str, calls: list, name_list: list) -> str:
-    prompt = "\nTask Prompt: Decide Whether You Need to Ask for Additional Context to Help Refine the Code"
+    prompt = "\nTask Prompt: Decide Whether to Ask an Agent for Cross-File Context to Support Automated Code Refinement"
 
-    prompt += "\nYou are a code reviewer who previously left the following comment on a pull request:"
+    prompt += "\nYou are an automated code review tool. You have been asked to refine a code block based on the following reviewer comment:"
     prompt += f"\n```\n{review}\n```"
-    prompt += "\nThe code block that prompted your comment is:"
+
+    prompt += "\nThe relevant code block (diff hunk) you are working on is:"
     prompt += f"\n```\n{old_without_minus}\n```"
 
-    prompt += f"\nYour overall refinement goal is:\n```\n{question}\n```"
+    prompt += "\nThrough your previous analysis of the code block and review comment, you have determined that:"
+    prompt += "\n- **Cross-file context** may be required — specifically, information defined in *other files* of the repository, such as how a function, variable, class, or module is implemented."
 
-    prompt += "\nYou are now trying to revise the code yourself, but can only see this code hunk. You suspect that some definitions in the project are important to help you implement the correct fix."
+    prompt += f"\nAs a result, you have formulated the following question for the Agent:\n```\n{question}\n```"
 
-    prompt += "\nYou may ask your teammate to help you check the definition and implementation of a specific **function / class / variable / module**, but only one at a time. You should ask *only* if you believe that element is project-specific (not a Python built-in) and clearly appears in:"
-    prompt += "\n- your comment,"
-    prompt += "\n- or the code block,"
-    prompt += "\n- or is otherwise reasonably inferred."
+    prompt += "\nYou cannot see the rest of the repository directly. However, when needed, you may ask an **Agent** to retrieve the definition and implementation of one specific element at a time — such as a function, class, variable, or module — from the full repository."
 
-    prompt += "\nAlso, do NOT ask again about elements that you’ve already inquired about earlier."
+    prompt += "\nYou should only ask about an element if:"
+    prompt += "\n- It is likely project-specific (not a Python built-in), and"
+    prompt += "\n- It appears in the code block, the review comment, or can be reasonably inferred as relevant to the modification task."
+
+    prompt += "\nDo not re-ask about any elements that have already been retrieved earlier."
 
     if len(calls) > 0:
         if len(name_list) > 0:
-            name_str = "Notify the following elements have been asked to retrieve:"
-            for name in name_list:
-                name_str += f"{name}, "
-                prompt += f"\n{name_str[:-2]}"
+            prompt += "\n\nRepository Context Retrieved So Far:"
+            prompt += f"\nYou have already asked about: {', '.join(name_list)}"
+
         for call in calls:
             caller, callee, callee_text, callee_context, callee_purpose = call
             callee_text_list = callee_text.split('\n')
@@ -236,13 +250,17 @@ def prompt_for_cross_file_context_request(old_without_minus: str, review: str, q
                     prompt += f"\n`{caller}` calls `{callee}`, which is defined as:\n```\n{callee_text}\n```"
 
     prompt += "\n\nNow decide:"
-    prompt += "\n- Do you still need to ask for additional cross-file context?"
-    prompt += "\n- If yes, which element (function/class/etc.) do you want to retrieve?"
-    prompt += "\n- What is the exact question or issue you're trying to resolve by checking that element?"
+    prompt += "\n- Do you still need to ask the Agent for additional cross-file context?"
+    prompt += "\n- If yes, which element (function/class/etc.) do you want to retrieve next?"
+    prompt += "\n- What is the exact question or issue you hope to resolve by checking that element?"
 
-    prompt += "\n\nOnly ask if it is highly likely to help you refine the code more accurately. If you believe no further questions are needed, just set `Additional_context_required` to 0."
-    prompt += "\n- And you should focus on what change is being suggested in the review, not whether a change is needed."
+    prompt += "\nYour analysis should focus on:"
+    prompt += "\n- **What specific change is being suggested** in the reviewer’s comment — not whether that change is necessary."
+    prompt += "\n  For example, even if the comment questions whether it’s worth deleting or refactoring a piece of code, you should assume the change will be made and focus on *how* to implement it."
+    prompt += "\n- **Whether the changes in this code block align with the reviewer’s intent** — you do not need to consider how it affects the rest of the codebase."
+    prompt += "\n  For example, if the comment suggests renaming an element, you don’t need to check for downstream breakage — those will be handled in future commits."
 
+    prompt += "\n\nOnly ask if it is likely to significantly improve the correctness of your code change."
     prompt += "\n\nOutput Format (in JSON):"
     prompt += "\n```json"
     prompt += "\n{"
@@ -255,17 +273,19 @@ def prompt_for_cross_file_context_request(old_without_minus: str, review: str, q
     return prompt
 
 def prompt_for_cross_file_context_summary(review: str, question: str, calls: list) -> str:
-    prompt = "\nTask Prompt: Summarize Cross-File Context to Help a Teammate Refine Code Based on Their Question"
+    prompt = "\nTask Prompt: Summarize Cross-File Context to Help an Automated Tool Refine Code Based on Its Question"
 
-    prompt += "\nYou are a helpful teammate who has been asked to assist with a code refinement task."
-    prompt += "\nYour colleague previously left the following review comment on a pull request:"
+    prompt += "\nYou are an intelligent Agent assisting an automated code review tool with code refinement."
+
+    prompt += "\nThe tool received the following reviewer comment as input:"
     prompt += f"\n```\n{review}\n```"
 
-    prompt += "\nThey are currently refining the code based on that comment, but they cannot access the full repository."
-    prompt += "\nThey've asked for your help in looking up some specific cross-file context."
-    prompt += f"\nThe specific question they want you to help them answer is:\n```\n{question}\n```"
+    prompt += "\nThe tool is refining a specific code block based on this review, but it does **not** have access to the full code repository."
 
-    prompt += "\nYou have looked up the relevant definitions and implementations of certain functions, classes, or variables from the codebase."
+    prompt += "\nTo resolve a potential ambiguity, the tool has generated the following question and asked you to retrieve and summarize relevant cross-file context:"
+    prompt += f"\n```\n{question}\n```"
+
+    prompt += "\nYou have searched the repository and gathered the relevant definitions or usages of certain functions, classes, or variables that may help answer the question."
 
     if len(calls) > 0:
         prompt += "\n\nHere is the repository context you found:"
@@ -279,13 +299,18 @@ def prompt_for_cross_file_context_summary(review: str, question: str, calls: lis
             prompt += f"\nPurpose for Checking This Callee: {callee_purpose}"
 
     prompt += "\n\nYour task:"
-    prompt += "\nBased on your findings and your teammate’s question, summarize only the most relevant information needed to answer their question."
-    prompt += "\nDo not provide generic descriptions — focus only on what helps answer the specific issue they raised."
-    prompt += "\nAnd you should focus on what change is being suggested in the review, not whether a change is needed."
+    prompt += "\nBased on your findings and the tool’s question, provide a concise summary of the most relevant information needed to answer that question."
+    prompt += "\nAvoid generic descriptions — include only information that is necessary for resolving the issue raised in the question."
+    
+    prompt += "\nYour analysis should focus on:"
+    prompt += "\n- **What specific change is being suggested** in the reviewer’s comment — not whether that change is necessary."
+    prompt += "\n  For example, even if the comment questions whether it’s worth deleting or refactoring a piece of code, you should assume the change will be made and focus on *how* to implement it."
+    prompt += "\n- **Whether the changes in this code block align with the reviewer’s intent** — you do not need to consider how it affects the rest of the codebase."
+    prompt += "\n  For example, if the comment suggests renaming an element, you don’t need to check for downstream breakage — those will be handled in future commits."
 
     prompt += "\n\nOutput Requirements:"
     prompt += "\n- Your summary should be under 100 words."
-    prompt += "\n- Make it concise, factual, and focused on helping your teammate make an accurate code change."
+    prompt += "\n- Make it concise, factual, and focused on helping the tool make an accurate code change."
     prompt += "\n- Format your response as a JSON object like this:"
     prompt += "\n```json"
     prompt += "\n{\"Summary\": \"<your summary here>\"}"
@@ -294,38 +319,45 @@ def prompt_for_cross_file_context_summary(review: str, question: str, calls: lis
     return prompt
 
 def prompt_for_evaluating_summary(old_without_minus: str, review: str, question: str, summary: str) -> str:
-    prompt = "\nTask Prompt: Evaluate Whether Your Context Question Has Been Answered by the Provided Summary"
+    prompt = "\nTask Prompt: Evaluate Whether the Agent’s Summary Has Answered Your Question"
 
-    prompt += "\nYou are the original code reviewer. You previously left this review comment on a pull request:"
+    prompt += "\nYou are an automated code review tool refining a code block based on the following reviewer comment:"
     prompt += f"\n```\n{review}\n```"
 
-    prompt += "\nYou are now refining the code yourself. Since you could not access the full codebase, you asked a teammate to look up some repository context for you."
+    prompt += "\nHowever, you can only see the code block and the review comment. You do not have access to the rest of the repository."
 
-    prompt += f"\nYou asked them the following question:\n```\n{question}\n```"
+    prompt += "\nTo address a knowledge gap, you asked an Agent to retrieve repository context and help answer the following question:"
+    prompt += f"\n```\n{question}\n```"
 
-    prompt += "\nHere is the current version of the code:"
+    prompt += "\nHere is the code block you are trying to refine:"
     prompt += f"\n```\n{old_without_minus}\n```"
 
-    prompt += "\nThey summarized what they found as follows:"
+    prompt += "\nThe Agent reviewed the repository and returned the following summary:"
     prompt += f"\n```json\n{{\"Summary\": \"{summary}\"}}\n```"
 
-    prompt += "\nYour task is to assess whether their summary was useful and whether it resolved your original question."
+    prompt += "\nYour task is to evaluate whether this summary:"
+    prompt += "\n- Is helpful for making the correct change,"
+    prompt += "\n- And whether it fully resolves your original question."
 
-    prompt += "\nIf the summary clearly answers your question, set:"
+    prompt += "\nIf the summary directly and clearly answers your question, set:"
     prompt += "\n  - `Question_resolved = 1`"
     prompt += "\n  - `Summary_useful = 1`"
 
-    prompt += "\nIf the summary is helpful but does not directly resolve your question, set:"
+    prompt += "\nIf the summary is helpful but does not fully answer your question, set:"
     prompt += "\n  - `Question_resolved = 0`"
     prompt += "\n  - `Summary_useful = 1`"
-    prompt += "\n  - and write a revised version of your question in `new_question` that is better aligned with what the summary helps clarify."
+    prompt += "\n  - Then rewrite your question in a clearer or more targeted way, based on what the summary clarified."
 
     prompt += "\nIf the summary is irrelevant or unhelpful, set:"
     prompt += "\n  - `Question_resolved = 0`"
     prompt += "\n  - `Summary_useful = 0`"
-    prompt += "\n  - and revise your question if necessary to make it clearer or more answerable."
+    prompt += "\n  - And optionally revise your question to make it more answerable."
 
-    prompt += "\nYou should focus on what change is being suggested in the review, not whether a change is needed."
+    prompt += "\nYour analysis should focus on:"
+    prompt += "\n- **What specific change is being suggested** in the reviewer’s comment — not whether that change is necessary."
+    prompt += "\n  For example, even if the comment questions whether it’s worth deleting or refactoring a piece of code, you should assume the change will be made and focus on *how* to implement it."
+    prompt += "\n- **Whether the changes in this code block align with the reviewer’s intent** — you do not need to consider how it affects the rest of the codebase."
+    prompt += "\n  For example, if the comment suggests renaming an element, you don’t need to check for downstream breakage — those will be handled in future commits."
 
     prompt += "\n\nOutput Format:"
     prompt += "\n```json"

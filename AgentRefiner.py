@@ -145,8 +145,9 @@ class AgentRefiner:
                     if new_question: question_for_in_file_context = new_question
 
         #再运行一次refinement作为turn1的结果,此结果中已包含In-file context
-        results.append({"turn": 1, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [self.get_refinement_result("summary", True, False)]})
         turn = 1
+        self.turn = turn
+        results.append({"turn": 1, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [self.get_refinement_result("summary", True, False)]})
 
         #1.2 处理Cross-file context
         if cross_file_context_required == "1":
@@ -299,7 +300,7 @@ def main():
     # }
     config = {
         "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/CR_and_CRN_estimated.json',
-        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result_4_6.json',
+        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result_4_7.json',
         # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
     }
     

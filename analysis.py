@@ -1,6 +1,6 @@
 import json
 import model
-with open('/mnt/ssd2/wangke/dataset/AgentRefiner/result_4_6.json', 'r') as f:
+with open('/mnt/ssd2/wangke/dataset/AgentRefiner/result_4_7.json', 'r') as f:
 # with open('/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/CR_and_CRN.json', 'r') as f:
 # with open('/mnt/ssd2/wangke/dataset/AgentRefiner//mnt/ssd2/wangke/dataset/AgentRefiner/datasets/CR_and_CRN.json.json', 'r') as f:
 # with open('/mnt/ssd2/wangke/dataset/AgentRefiner/new_map_result_deepseek.json', 'r') as f:
@@ -78,6 +78,7 @@ with open('/mnt/ssd2/wangke/dataset/AgentRefiner/result_4_6.json', 'r') as f:
         for line in new_line:
             if line.startswith('+') : new_line_add_flag = True
         if not new_line_add_flag: continue
+        if record["review"].find("```") != -1:continue
         
         
         for result in results:
@@ -163,8 +164,8 @@ with open('/mnt/ssd2/wangke/dataset/AgentRefiner/result_4_6.json', 'r') as f:
     print(f"gpt_em:{gpt_score[0]/count}, gpt_em_trim:{gpt_score[1]/count}, gpt_bleu:{gpt_score[2]/count}, gpt_bleu_trim:{gpt_score[3]/count}")
 
     # # with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_negative_deepseek.json', 'w') as f:
-    with open('/mnt/ssd2/wangke/dataset/cr_data/case_study.json', 'w') as f:
-        print(f"len(ids):{len(ids)}")
-        records = [record for record in records if record["_id"] in ids]
-        for record in records: record["definitions"] = "omit"
-        json.dump(records, f, indent=4)
+    # with open('/mnt/ssd2/wangke/dataset/cr_data/case_study.json', 'w') as f:
+    #     print(f"len(ids):{len(ids)}")
+    #     records = [record for record in records if record["_id"] in ids]
+    #     for record in records: record["definitions"] = "omit"
+    #     json.dump(records, f, indent=4)

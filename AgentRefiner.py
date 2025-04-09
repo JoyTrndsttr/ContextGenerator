@@ -32,7 +32,7 @@ class AgentRefiner:
 
     def get_refinement_result(self, with_summary_or_code, with_precise_review_position, clipped_flag):
         old_without_minus, record, calls, turn, review_info, in_file_context_summary, cross_file_context_summary = self.old_without_minus, self.record, self.calls, self.turn, self.review_info, self.in_file_context_summary, self.cross_file_context_summary
-        max_attempts = 1
+        max_attempts = 3
         for i in range(max_attempts):
             ablation_result = {"turn": turn, "ablation_info": "", "prompt_for_refinement": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
             # in_file_context_summary = "" 
@@ -97,7 +97,7 @@ class AgentRefiner:
 
         #1. Instruction 阶段
         #判断是否需要额外的上下文信息，包括In-file context和Cross-file context
-        prompt_for_additional_context_required = model.prompt_for_additional_context_required(old_without_minus, record["review"])
+        prompt_for_additional_context_required = model.prompt_for_additional_context_required(old_without_minus, record["review"], review_info)
         _, think_for_additional_context_required, additional_context_required_result_json = model.get_full_deepseek_response(prompt_for_additional_context_required)
         in_file_context_required = self.get_json_value_number(additional_context_required_result_json, "In_file_context_required")
         question_for_in_file_context = self.get_json_value_string(additional_context_required_result_json, "Your_question_for_in_file_context")
@@ -109,7 +109,8 @@ class AgentRefiner:
             "cross_file_context_required": cross_file_context_required,
             "question_for_cross_file_context": question_for_cross_file_context,
             "additional_context_required_result_json": additional_context_required_result_json.split('\n'),
-            "think_for_additional_context_required": think_for_additional_context_required.split('\n')
+            "think_for_additional_context_required": think_for_additional_context_required.split('\n'),
+            "prompt_for_additional_context_required": prompt_for_additional_context_required.split('\n')
         }
         if in_file_context_required == "0" and cross_file_context_required == "0":
             results[0]["flag_for_context_change"] = "case:No additional context required"
@@ -120,25 +121,29 @@ class AgentRefiner:
             #3.1 Summary In-file context
             in_file_context_summary_useful = "0"
             for i in range(3): #Validation feedback loop
-                prompt_for_in_file_context_summary = model.prompt_for_in_file_context_summary(record["review"], in_file_context, question_for_in_file_context)
+                prompt_for_in_file_context_summary = model.prompt_for_in_file_context_summary(record["review"], in_file_context, question_for_in_file_context, review_info)
                 _, think_for_in_file_context_summary, in_file_context_summary = model.get_full_deepseek_response(prompt_for_in_file_context_summary)
                 in_file_context_summary = self.get_json_value_string(in_file_context_summary, "Summary")
                 record["in_file_context_summary"] = {
                     "in_file_context_summary": in_file_context_summary,
-                    "think_for_in_file_context_summary": think_for_in_file_context_summary.split('\n')
+                    "think_for_in_file_context_summary": think_for_in_file_context_summary.split('\n'),
+                    "prompt_for_in_file_context_summary": prompt_for_in_file_context_summary.split('\n')
                 }
-                prompt_for_evaluating_summary = model.prompt_for_evaluating_summary(old_without_minus, record["review"], question_for_in_file_context, in_file_context_summary)
+                prompt_for_evaluating_summary = model.prompt_for_evaluating_summary(old_without_minus, record["review"], question_for_in_file_context, in_file_context_summary, review_info)
                 _, think_for_evaluating_summary, evaluating_summary_result = model.get_full_deepseek_response(prompt_for_evaluating_summary)
                 question_resolved = self.get_json_value_number(evaluating_summary_result, "Question_resolved")
                 new_question = self.get_json_value_string(evaluating_summary_result, "New_question")
                 in_file_context_summary_useful = self.get_json_value_number(evaluating_summary_result, "Summary_useful")
                 record["evaluating_summary"] = {
                     "question_resolved": question_resolved,
+                    "in_file_context_summary_useful": in_file_context_summary_useful,
                     "new_question": new_question,
                     "evaluating_summary_result": evaluating_summary_result.split('\n'),
-                    "think_for_evaluating_summary": think_for_evaluating_summary.split('\n')
+                    "think_for_evaluating_summary": think_for_evaluating_summary.split('\n'),
+                    "prompt_for_evaluating_summary": prompt_for_evaluating_summary.split('\n')
                 }
                 if in_file_context_summary_useful == "1":
+                # if question_resolved == "1":
                     self.in_file_context_summary = in_file_context_summary
                     break
                 else:
@@ -160,7 +165,7 @@ class AgentRefiner:
                 if name: contextGenerator.updateSource(name)
                 definitions = contextGenerator.getContext()
 
-                prompt_for_cross_file_context_request = model.prompt_for_cross_file_context_request(old_without_minus, record["review"], question_for_cross_file_context, self.calls, name_list)
+                prompt_for_cross_file_context_request = model.prompt_for_cross_file_context_request(old_without_minus, record["review"], question_for_cross_file_context, self.calls, name_list, review_info)
                 _, think_for_cross_file_context_request, cross_file_context_request_result_json = model.get_full_deepseek_response(prompt_for_cross_file_context_request)
                 additional_context_required = self.get_json_value_number(cross_file_context_request_result_json, "Additional_context_required")
                 try: element_name_to_retrieve = re.search(r'[a-zA-Z_]+', cross_file_context_request_result_json.split("Element_name_to_retrieve")[1]).group(0) 
@@ -174,7 +179,8 @@ class AgentRefiner:
                     "element_name_to_retrieve": element_name_to_retrieve,
                     "question_for_element": question_for_element,
                     "cross_file_context_request_result_json": cross_file_context_request_result_json.split('\n'),
-                    "think_for_cross_file_context_request": think_for_cross_file_context_request.split('\n')
+                    "think_for_cross_file_context_request": think_for_cross_file_context_request.split('\n'),
+                    "prompt_for_cross_file_context_request": prompt_for_cross_file_context_request.split('\n')
                 }
                 name = element_name_to_retrieve
                 if name not in name_list: name_list.append(name)
@@ -199,29 +205,32 @@ class AgentRefiner:
                 #3. Summary阶段
                 #3.2 Summary Cross-file context
                 for i in range(3): #Validation feedback loop
-                    prompt_for_cross_file_context_summary = model.prompt_for_cross_file_context_summary(record["review"], question_for_cross_file_context, self.calls)
+                    prompt_for_cross_file_context_summary = model.prompt_for_cross_file_context_summary(record["review"], question_for_cross_file_context, self.calls, review_info)
                     _, think_for_cross_file_context_summary, cross_file_context_summary = model.get_full_deepseek_response(prompt_for_cross_file_context_summary)
                     cross_file_context_summary = self.get_json_value_string(cross_file_context_summary, "Summary")
                     definition_name["context"] = cross_file_context_summary
                     self.calls.pop()
                     self.calls.append((definition_name['caller'], name, definition_name['text'], definition_name['context'] , question_for_element))
                     result["cross_file_context_summary"] = {
-                        "cross_file_context_summary_useful": "0",
                         "cross_file_context_summary": cross_file_context_summary,
-                        "think_for_cross_file_context_summary": think_for_cross_file_context_summary.split('\n')
+                        "think_for_cross_file_context_summary": think_for_cross_file_context_summary.split('\n'),
+                        "prompt_for_cross_file_context_summary": prompt_for_cross_file_context_summary.split('\n')
                     }
-                    prompt_for_evaluating_summary = model.prompt_for_evaluating_summary(old_without_minus, record["review"], question_for_cross_file_context, cross_file_context_summary)
+                    prompt_for_evaluating_summary = model.prompt_for_evaluating_summary(old_without_minus, record["review"], question_for_cross_file_context, cross_file_context_summary, review_info)
                     _, think_for_evaluating_summary, evaluating_summary_result = model.get_full_deepseek_response(prompt_for_evaluating_summary)
                     question_resolved = self.get_json_value_number(evaluating_summary_result, "Question_resolved")
                     cross_file_context_summary_useful = self.get_json_value_number(evaluating_summary_result, "Summary_useful")
                     new_question = self.get_json_value_string(evaluating_summary_result, "New_question")
                     result["evaluating_summary"] = {
                         "question_resolved": question_resolved,
+                        "cross_file_context_summary_useful": cross_file_context_summary_useful,
                         "new_question": new_question,
                         "evaluating_summary_result": evaluating_summary_result.split('\n'),
-                        "think_for_evaluating_summary": think_for_evaluating_summary.split('\n')
+                        "think_for_evaluating_summary": think_for_evaluating_summary.split('\n'),
+                        "prompt_for_evaluating_summary": prompt_for_evaluating_summary.split('\n')
                     }
                     if cross_file_context_summary_useful == "1":
+                    # if question_resolved == "1":
                         self.cross_file_context_summary = cross_file_context_summary
                         break
                     else:
@@ -298,23 +307,28 @@ def main():
     #     "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result_4_3.json',
     #     # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
     # }
+    # config = {
+    #     "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/CR_and_CRN_4_7.json',
+    #     "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result_5_2.json',
+    #     # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
+    # }
     config = {
-        "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/CR_and_CRN_estimated.json',
-        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result_4_7.json',
+        "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_estimated.json',
+        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result_5_3.json',
         # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
     }
     
 
-    #继续处理未完成的记录
-    # with open(config["record_path"], "r", encoding="utf-8") as f0:
-    #     _records = json.load(f0)
-    #     ids = [record["_id"] for record in _records]
+    # 继续处理未完成的记录
+    with open(config["output_path"], "r", encoding="utf-8") as f0:
+        _records = [json.loads(line) for line in f0]
+        ids = [record["_id"] for record in _records]
 
     # 读取数据集
     with open(config["dataset_path"], "r", encoding="utf-8") as f:
         records = [json.loads(line) for line in f]
         # records = json.load(f)
-        # records = [record for record in records if record["_id"] not in ids]
+        records = [record for record in records if record["_id"] not in ids]
         print(f"待处理记录数: {len(records)}")
 
     # # 测试单个记录

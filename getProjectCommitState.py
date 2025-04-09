@@ -10,7 +10,7 @@ import re
 
 # GitHub 个人访问令牌
 # GITHUB_TOKEN = json.load(open("settings.json", encoding='utf-8'))["GITHUB_TOKEN"]
-GITHUB_TOKEN = json.load(open("/home/wangke/model/ContextGenerator/settings.json", encoding='utf-8'))["github_tokens"][0]
+GITHUB_TOKEN = json.load(open("/home/wangke/model/ContextGenerator/settings.json", encoding='utf-8'))["github_tokens"][1]
 
 # 最大查找 parent commit 的次数
 MAX_PARENT_SEARCH = 100

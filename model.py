@@ -1,4 +1,3 @@
-# 数据库连接配置
 from time import sleep
 import json
 from openai import OpenAI
@@ -22,7 +21,7 @@ logging.basicConfig(filename='log.txt', level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s', filemode='w')
 deepseek_model = RequestLLM()
 
-def prompt_for_repo_context_dependency_estimation(old_code: str, review: str, new_code: str) -> str:
+def prompt_for_repo_context_dependency_estimation(old_code: str, review: str, new_code: str, review_info) -> str:
     prompt = "\nTask Prompt: Evaluate Whether a Code Refinement Task Requires Repository Context to Succeed"
 
     prompt += "\nYou are a researcher studying code refinement models. You are analyzing a dataset where each example consists of:"
@@ -44,9 +43,8 @@ def prompt_for_repo_context_dependency_estimation(old_code: str, review: str, ne
     prompt += "\n\nTo make this decision, follow these steps:"
 
     prompt += "\n1. **Compare the original code block and the ground truth**:"
-    prompt += "\n   - Use line prefixes to interpret changes: lines starting with `-` are deletions; lines starting with `+` are additions."
-    prompt += "\n   - Deletion operations typically do not require context."
-    prompt += "\n   - Additions and modifications are more likely to require context, especially if they introduce new logic, data structures, or features."
+    prompt += "\n   - If the change is modifications of document/comment or name/format convention, etc., context is likely not needed."
+    prompt += "\n   - If the change involves modifications or additions about bugs/new features, etc., context may be needed."
 
     prompt += "\n2. **Analyze the reviewer’s comment and its relevance to the change**:"
     prompt += "\n   - Focus on what concrete change is being suggested in the comment, not whether a change is necessary."
@@ -55,15 +53,20 @@ def prompt_for_repo_context_dependency_estimation(old_code: str, review: str, ne
     prompt += "\n   - If the review does not relate to the observed changes at all, then context is likely not needed for this sample."
 
     prompt += "\n3. **Identify new elements introduced in the change**:"
-    prompt += "\n   - Focus on added lines (`+`) in the ground truth. Extract any newly introduced identifiers such as functions, classes, variables, or module names."
-    prompt += "\n   - Do **not** consider natural language content like comments or docstrings as new elements for this purpose."
-    prompt += "\n   - If the new element **also appears** in the code block or the review comment (as an exact token match), it likely does **not** require additional context."
+    prompt += "\n   - Focus on added lines (`+`) in the ground truth. Extract any newly elements that have never appeared in the original code block or the review comment."
+    prompt += "\n   - If the new element appears **explicitly** in the review comment (even if not present in the original code block), it does **not** count as requiring additional context."
     prompt += "\n   - If the new element appears in neither the code block nor the review comment, but is clearly inferred from an existing element's name or usage (e.g., calling a function likely related to an identifier in the original block), then context is **more likely** required."
-    prompt += "\n   - Exclude Python built-in names from consideration."
+    prompt += "\n   - Exclude Python built-in names and natural language content(e.g., comments, docstrings) from consideration."
 
     prompt += "\n\nHere is the code block under review:"
     prompt += f"\n```\n{old_code}\n```"
-    prompt += f"\nThe reviewer’s comment is:\n```\n{review}\n```"
+    if not review_info or not review_info.get("review_position_line", None):
+        prompt += "The code review for this code is:\n"
+    else:
+        if review_info.get("review_hunk_start_line", None):
+            prompt += f"The reviewer commented on the code from line '{review_info['review_hunk_start_line']}' to line '{review_info['review_position_line']}':\n"
+        else: prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
+    prompt += review
     prompt += "\nHere is the ground truth revision:"
     prompt += f"\n```\n{new_code}\n```"
 
@@ -77,11 +80,17 @@ def prompt_for_repo_context_dependency_estimation(old_code: str, review: str, ne
 
     return prompt
 
-def prompt_for_additional_context_required(old: str, review: str) -> str:
+def prompt_for_additional_context_required(old: str, review: str, review_info) -> str:
     prompt = "\nTask Prompt: Decide Whether You, an Automated Code Review Tool, Need Additional Context to Refine a Problematic Code Block"
 
     prompt += "\nYou are an automated code review tool. You have received the following reviewer comment:"
-    prompt += f"\n```\n{review}\n```"
+    if not review_info or not review_info.get("review_position_line", None):
+        prompt += "The code review for this code is:\n"
+    else:
+        if review_info.get("review_hunk_start_line", None):
+            prompt += f"The reviewer commented on the code from line '{review_info['review_hunk_start_line']}' to line '{review_info['review_position_line']}':\n"
+        else: prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
+    prompt += review
 
     prompt += "\nThe comment refers to the following code block (diff hunk):"
     prompt += f"\n```\n{old}\n```"
@@ -116,12 +125,18 @@ def prompt_for_additional_context_required(old: str, review: str) -> str:
 
     return prompt
 
-def prompt_for_in_file_context_summary(review: str, source_code: str, question: str) -> str:
+def prompt_for_in_file_context_summary(review: str, source_code: str, question: str, review_info) -> str:
     prompt = "\nTask Prompt: You Are an Agent Summarizing In-File Context to Support Automated Code Refinement"
 
     prompt += "\nYou are an intelligent Agent that assists an automated code review tool."
     prompt += "\nThe tool received the following review comment as guidance for how to improve a code block:"
-    prompt += f"\n```\n{review}\n```"
+    if not review_info or not review_info.get("review_position_line", None):
+        prompt += "The code review for this code is:\n"
+    else:
+        if review_info.get("review_hunk_start_line", None):
+            prompt += f"The reviewer commented on the code from line '{review_info['review_hunk_start_line']}' to line '{review_info['review_position_line']}':\n"
+        else: prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
+    prompt += review
 
     prompt += "\nThe tool is attempting to modify the code block accordingly, but it does not have access to the full file."
     prompt += "\nIt has asked you to answer the following question, which it generated in order to better understand the context needed for this change:"
@@ -200,11 +215,17 @@ def prompt_for_refinement(old_without_minus, review, calls, review_info, with_su
         prompt += f"Specifically,if not required by the review, your code should start with:\"{line_start}\" and end with:\"{line_end}\""
     return prompt
 
-def prompt_for_cross_file_context_request(old_without_minus: str, review: str, question: str, calls: list, name_list: list) -> str:
+def prompt_for_cross_file_context_request(old_without_minus: str, review: str, question: str, calls: list, name_list: list, review_info) -> str:
     prompt = "\nTask Prompt: Decide Whether to Ask an Agent for Cross-File Context to Support Automated Code Refinement"
 
     prompt += "\nYou are an automated code review tool. You have been asked to refine a code block based on the following reviewer comment:"
-    prompt += f"\n```\n{review}\n```"
+    if not review_info or not review_info.get("review_position_line", None):
+        prompt += "The code review for this code is:\n"
+    else:
+        if review_info.get("review_hunk_start_line", None):
+            prompt += f"The reviewer commented on the code from line '{review_info['review_hunk_start_line']}' to line '{review_info['review_position_line']}':\n"
+        else: prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
+    prompt += review
 
     prompt += "\nThe relevant code block (diff hunk) you are working on is:"
     prompt += f"\n```\n{old_without_minus}\n```"
@@ -272,13 +293,19 @@ def prompt_for_cross_file_context_request(old_without_minus: str, review: str, q
 
     return prompt
 
-def prompt_for_cross_file_context_summary(review: str, question: str, calls: list) -> str:
+def prompt_for_cross_file_context_summary(review: str, question: str, calls: list, review_info) -> str:
     prompt = "\nTask Prompt: Summarize Cross-File Context to Help an Automated Tool Refine Code Based on Its Question"
 
     prompt += "\nYou are an intelligent Agent assisting an automated code review tool with code refinement."
 
     prompt += "\nThe tool received the following reviewer comment as input:"
-    prompt += f"\n```\n{review}\n```"
+    if not review_info or not review_info.get("review_position_line", None):
+        prompt += "The code review for this code is:\n"
+    else:
+        if review_info.get("review_hunk_start_line", None):
+            prompt += f"The reviewer commented on the code from line '{review_info['review_hunk_start_line']}' to line '{review_info['review_position_line']}':\n"
+        else: prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
+    prompt += review
 
     prompt += "\nThe tool is refining a specific code block based on this review, but it does **not** have access to the full code repository."
 
@@ -318,11 +345,17 @@ def prompt_for_cross_file_context_summary(review: str, question: str, calls: lis
 
     return prompt
 
-def prompt_for_evaluating_summary(old_without_minus: str, review: str, question: str, summary: str) -> str:
+def prompt_for_evaluating_summary(old_without_minus: str, review: str, question: str, summary: str, review_info) -> str:
     prompt = "\nTask Prompt: Evaluate Whether the Agent’s Summary Has Answered Your Question"
 
     prompt += "\nYou are an automated code review tool refining a code block based on the following reviewer comment:"
-    prompt += f"\n```\n{review}\n```"
+    if not review_info or not review_info.get("review_position_line", None):
+        prompt += "The code review for this code is:\n"
+    else:
+        if review_info.get("review_hunk_start_line", None):
+            prompt += f"The reviewer commented on the code from line '{review_info['review_hunk_start_line']}' to line '{review_info['review_position_line']}':\n"
+        else: prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
+    prompt += review
 
     prompt += "\nHowever, you can only see the code block and the review comment. You do not have access to the rest of the repository."
 

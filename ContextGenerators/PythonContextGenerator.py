@@ -23,7 +23,7 @@ class PythonContextGenerator:
             if code_diff_prefix.startswith('@@'): break
         start = int(re.search(r'(\d+)', code_diff_prefix).group(1))
         end = start + (self.end_index - self.start_index)
-        self.start_index, self.end_index = start, end
+        self.start_index, self.end_index = start-1, end-1
         
         #找到old最近的上层定义
         source_code_lines = self.source_code.split('\n')
@@ -39,8 +39,6 @@ class PythonContextGenerator:
             line -= 1
         self.super_function = super_function
 
-        self.testSet = set()
-        self.testCount = 0
         #查找所有start_point的行号在self.start_index与self.end_index之间的特定类型node节点
         self.node_list = []
         self.name_list = []
@@ -56,11 +54,9 @@ class PythonContextGenerator:
         for child in node.children:
             if child.start_point[0] > self.end_index or child.end_point[0] < self.start_index:
                 continue
-            self.testCount += 1
             if len(child.children) == 0:
-                self.testSet.add(child.type)
                 if child.start_point[0] in range(self.start_index, self.end_index):
-                    if child.type in ["def", "class", "identifier"]:
+                    if child.type in ["identifier"]:
                         self.node_list.append(child)
             else:
                 self.find_node_by_range(child)
@@ -94,7 +90,7 @@ class PythonContextGenerator:
         for definition in definitions:
             if not definition.module_path or not definition.full_name: continue
             print(f"Find definition: {definition.name} in {definition.module_path._str}")
-            # if definition.module_path._str.find(self.repo_name) == -1: continue  //是否查找内置函数的定义
+            # if definition.module_path._str.find(self.repo_name) == -1: continue  #是否查找内置函数的定义
             name = definition.name
             path = definition.full_name if definition.full_name else definition.module_name
             type = definition.type

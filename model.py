@@ -22,7 +22,7 @@ logging.basicConfig(filename='log.txt', level=logging.DEBUG,
 deepseek_model = RequestLLM()
 
 def prompt_for_repo_context_dependency_estimation(old_code: str, review: str, new_code: str, review_info) -> str:
-    prompt = "\nTask Prompt: Evaluate Whether a Code Refinement Task Requires Repository Context to Succeed"
+    prompt = "\nTask Prompt: Evaluate Whether a Code Refinement Task Requires Repository Context"
 
     prompt += "\nYou are a researcher studying code refinement models. You are analyzing a dataset where each example consists of:"
     prompt += "\n- A code block (diff hunk);"

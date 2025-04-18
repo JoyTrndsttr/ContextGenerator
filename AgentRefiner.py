@@ -2,7 +2,6 @@ from ContextGenerators.LanguageContextGeneratorManager import LanguageContextGen
 import getProjectCommitState
 from getProjectCommitState import CLBPP
 import logging
-import ErrorProcess
 import json
 import model
 import re
@@ -312,23 +311,29 @@ def main():
     #     "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result_5_2.json',
     #     # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
     # }
+    # config = {
+    #     "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_estimated.json',
+    #     "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result_5_3.json',
+    #     # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
+    # }
     config = {
-        "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_estimated.json',
-        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result_5_3.json',
+        "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_repo_datasets_filtered.json',
+        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result_4.18.json',
         # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
     }
     
 
-    # 继续处理未完成的记录
-    with open(config["output_path"], "r", encoding="utf-8") as f0:
-        _records = [json.loads(line) for line in f0]
-        ids = [record["_id"] for record in _records]
+    # # 继续处理未完成的记录
+    # with open(config["output_path"], "r", encoding="utf-8") as f0:
+    #     _records = [json.loads(line) for line in f0]
+    #     ids = [record["_id"] for record in _records]
 
     # 读取数据集
     with open(config["dataset_path"], "r", encoding="utf-8") as f:
         records = [json.loads(line) for line in f]
         # records = json.load(f)
-        records = [record for record in records if record["_id"] not in ids]
+        # records = [record for record in records if record["_id"] not in ids]
+        records = records[:3000]
         print(f"待处理记录数: {len(records)}")
 
     # # 测试单个记录

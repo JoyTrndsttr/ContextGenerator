@@ -40,20 +40,33 @@ class LanguageContextGenerator:
             '.py': self.load_language(Language(tspython.language())),
             '.rb': self.load_language(Language(tsruby.language())),
         }
-        if not self.record: return None
+        if not self.record: raise Exception("No record found")
         self.record_id, self.repo_name, self.paths, self.code_diffs, self.old, self.comment = self.record['_id'], self.record['repo'], self.record['path'], self.record['code_diff'] , self.record['old'], self.record['comment']
         self.code_diffs = json.loads(self.code_diffs)
         self.repo_path = os.path.join(self.repo_base_path, self.repo_name.split('/')[1])
+        self.old = '\n'.join([line.strip() for line in self.old.split('\n') if line.strip()])
 
         #匹配old和code_diff,获取old在源代码中的位置
         match,start_index,end_index = False, -1, -1
         self.file_path = None
+        patchs,patch = [], []
         for path,code_diff in self.code_diffs.items():
-            match, start_index,end_index = self.compare_old_and_diff(self.old, code_diff)
-            self.file_path = os.path.join(self.repo_path, path)
+            for line in code_diff.split('\n'):
+                if line.startswith('@@'):
+                    if patch:
+                        patchs.append(patch)
+                    patch = [line]
+                else:
+                    patch.append(line)
+            if patch: patchs.append(patch)
+            for patch in patchs:
+                patch = '\n'.join(patch)
+                match, start_index,end_index = self.compare_old_and_diff(self.old, patch)
+                self.file_path = os.path.join(self.repo_path, path)
+                if match: break
             if match: break
-        if not match or not os.path.exists(self.file_path): return None
-        self.code_diff = code_diff
+        if not match or not os.path.exists(self.file_path): raise Exception("Cannot match old code in code diff")
+        self.code_diff = patch
 
         #获取评论在old code中指向的位置
         if self.comment:
@@ -74,15 +87,21 @@ class LanguageContextGenerator:
 
         #获取文件后缀并加载对应的语言解析器和上下文生成器
         self.file_extension = os.path.splitext(self.file_path)[1]
-        if self.file_extension not in ['.py', '.java']: return None
+        if self.file_extension not in ['.py', '.java']: raise Exception("Unsupported file type")
         self.parser = self.language_parsers[self.file_extension]
         self.tree,self.source_code = self.parse_file(self.file_path, self.parser)
         self.context_generator = None
+        self.start_index, self.end_index = start_index, end_index
         if self.file_extension == '.py':
             self.context_generator = PythonContextGenerator(self.parser, self.tree.root_node, self.source_code, self.file_path, self.code_diff, self.repo_name, (start_index, end_index))
 
+    def get_context_generator_after_applying_diff(self):
+        plus_count = len([line for line in self.code_diff.split('\n') if line.startswith('+')])
+        minus_count = len([line for line in self.code_diff.split('\n') if line.startswith('-')])
+        return PythonContextGenerator(self.parser, self.tree.root_node, self.source_code, self.file_path, self.code_diff, self.repo_name, (self.start_index, self.end_index + plus_count - minus_count))
+    
     def compare_old_and_diff(self, old, code_diff):
-        code_diff_lines = code_diff.split('\n')
+        code_diff_lines = [line for line in code_diff.split('\n') if not line.startswith('+')]
         old_lines = old.split('\n')
         old_lines = [line for line in old_lines if line]
         positions = []

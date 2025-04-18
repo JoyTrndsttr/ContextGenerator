@@ -8,7 +8,8 @@ import time
 github_tokens = json.load(open("/home/wangke/model/ContextGenerator/settings.json", encoding='utf-8'))["github_tokens"]
 token_index = 0
 GITHUB_TOKEN = github_tokens[token_index]
-output_dir = "/mnt/ssd2/wangke/dataset/datasets.json"
+repo_dir = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/success_repos.json"
+output_dir = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_repo_datasets.json"
 dataset_id = 0
 
 def update_github_token():
@@ -166,21 +167,24 @@ def main():
     _dublicate_repos = []
     repos = []
     last_processed_id = 0
-    with open(output_dir, "r") as f0:
-        for line in f0:
-            dataset = json.loads(line.strip())
-            repo = dataset['repo']
-            if repo not in _dublicate_repos:
-                _dublicate_repos.append(repo)
-            last_processed_id = dataset['_id']
+    # with open(output_dir, "r") as f0:
+    #     for line in f0:
+    #         dataset = json.loads(line.strip())
+    #         repo = dataset['repo']
+    #         if repo not in _dublicate_repos:
+    #             _dublicate_repos.append(repo)
+    #         last_processed_id = dataset['_id']
     global dataset_id
     dataset_id = last_processed_id
-    with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json', 'r') as f:
-        records = json.load(f)
-        for record in records:
-            repo = record['repo']
-            if repo not in repos and repo not in _dublicate_repos:
-                repos.append(repo)
+    with open(repo_dir, "r") as f:
+        repos = [line.strip() for line in f]
+        print(f"待处理的repo数量：{len(repos)}")
+    # with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json', 'r') as f:
+    #     records = json.load(f)
+    #     for record in records:
+    #         repo = record['repo']
+    #         if repo not in repos and repo not in _dublicate_repos:
+    #             repos.append(repo)
     # 多进程处理
     # with mp.Pool(processes=10) as pool:
     #     pool.starmap(get_pulls, [(repo,) for repo in repos])

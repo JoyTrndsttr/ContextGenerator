@@ -4,13 +4,13 @@ import subprocess
 import requests
 import os
 import json
+from utils.RequestGitHub import RequestGitHub
 from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry # type: ignore
+from requests.packages.urllib3.util.retry import Retry
 import re
 
-# GitHub 个人访问令牌
-# GITHUB_TOKEN = json.load(open("settings.json", encoding='utf-8'))["GITHUB_TOKEN"]
-GITHUB_TOKEN = json.load(open("/home/wangke/model/ContextGenerator/settings.json", encoding='utf-8'))["github_tokens"][0]
+# 用来控制获取的GitHub token
+requestGitHub = RequestGitHub()
 
 # 最大查找 parent commit 的次数
 MAX_PARENT_SEARCH = 100
@@ -46,7 +46,7 @@ def get_info_from_jsonfile(file_path, id):
 # 使用 GitHub API 获取 commit 信息
 def get_commit_info(repo, commit_sha):
     def get_commit_info_by_page(url):
-        headers = {'Authorization': f'token {GITHUB_TOKEN}'}
+        headers = {'Authorization': f'token {requestGitHub.next_github_token()}'}
         response = requests_retry_session().get(url, headers=headers, timeout=10)
         response.raise_for_status()
         link_header = response.headers.get('Link', None)
@@ -54,8 +54,6 @@ def get_commit_info(repo, commit_sha):
         return link_header,commit_info
     
     url = f"https://api.github.com/repos/{repo}/commits/{commit_sha}"
-    # url = "https://api.github.com/repos/spotify/luigi/commits/03f712cffab169e7b617425c22eb84d82c8f081c"
-    
     link_header,commit_infos = get_commit_info_by_page(url)
     while link_header:
         if link_header.split('page=')[1].split('>')[0] == '1' : break
@@ -73,7 +71,7 @@ def get_comment_info(record):
     repo, review, commit_url = record["repo"],record["review"],record["commit_url"]
     pull = commit_url.split('pull/')[1].split('/')[0]
     review_url = f"https://api.github.com/repos/{repo}/pulls/{pull}/comments"
-    headers = {'Authorization': f'token {GITHUB_TOKEN}'}
+    headers = {'Authorization': f'token {requestGitHub.next_github_token()}'}
     response = requests_retry_session().get(review_url, headers=headers, timeout=10)
     response.raise_for_status()
     comments = response.json()
@@ -94,7 +92,7 @@ def get_comment_info(record):
     return comment_info, review_url
 
 def get_comment(review_url):
-    headers = {'Authorization': f'token {GITHUB_TOKEN}'}
+    headers = {'Authorization': f'token {requestGitHub.next_github_token()}'}
     response = requests_retry_session().get(review_url, headers=headers, timeout=10)
     response.raise_for_status()
     comment = response.json()
@@ -196,8 +194,6 @@ def restore_to_commit(repo, repo_path, target_commit):
             print(f"Successfully checked out to commit {current_commit} after {search_count} searches")
             subprocess.run(["git", "clean", "-fdx"], cwd=repo_path, check=True)
             print(f"Untracked files and dirs cleaned")
-            # subprocess.run(["git", "submodule", "update", "--init", "--recursive"], cwd=repo_path, check=True)
-            # print(f"Submodule updated")
             successful_checkout = True
             break
         except subprocess.CalledProcessError:
@@ -223,7 +219,6 @@ def CLBPP(record):
     #获取commit_hash的parents_commit_hash，将项目回溯到parents_commit_hash的状态
     parents_commit_hash = get_commit_info(repo, commit_hash).get('parents', [])[0]['sha']
     successful_checkout, applied_commits = restore_to_commit(repo, repo_path, parents_commit_hash)
-    # successful_checkout = True
     if successful_checkout:
         for commit_info in reversed(applied_commits):
             files = commit_info.get('files', [])
@@ -232,7 +227,6 @@ def CLBPP(record):
                     apply_patch(repo_path, file_info)
                     print(f"Applied patch for {file_info['filename']} commit_info:{commit_info['sha']}")
                 except PermissionError:
-                    #有可能是windows将子模块目录当文件处理
                     print(f"Error,failed to apply patch for {file_info['filename']} commit_info:{commit_info['sha']}")
         paths_str, code_diff_str = get_commit_details(repo, commit_url)
         record['review_url'] = review_url
@@ -247,19 +241,6 @@ def CLBPP(record):
 
 # 主函数
 def main(id):
-    # file_path = '/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json'
-    
-    # with open(file_path, 'r', encoding='utf-8') as file:
-    #     records = json.load(file)
-    #     ids = [record['_id'] for record in records]
-    # for id in ids:
-    #     try:
-    #         generate_path_code_diff_to_jsonfile(id, file_path)
-    #     except Exception as e:
-    #         print(f"Error processing ID {id}: {e}")
-    #         continue
-    # return generate_path_code_diff_to_jsonfile(id, '/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json')
-    # return generate_path_code_diff_to_jsonfile(id, '/mnt/ssd2/wangke/dataset/sample.json')
     pass
     
 if __name__ == "__main__":

@@ -13,8 +13,8 @@ token_index = 0
 GITHUB_TOKEN = github_tokens[token_index]
 clone_dir = r'/mnt/ssd2/wangke/CR_data/repo'
 output_dir = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/repos.json"
-success_repo_dir = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/success_repos.json"
-failed_repo_dir = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/failed_repos.json"
+success_repo_dir = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/success_repos_2.json"
+failed_repo_dir = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/failed_repos_2.json"
 
 def update_github_token():
     global GITHUB_TOKEN
@@ -37,7 +37,7 @@ def fetch_data(url, params, session):
             else:
                 raise e
 
-def get_top_python_repos(top_n=1000):
+def get_top_python_repos(top_n=5000):
     url = "https://api.github.com/search/repositories"
     query_params = {
         "q": "language:python",
@@ -122,14 +122,19 @@ def process_repositories():
     # Load the repositories from the JSON file
     with open(output_dir, 'r') as f:
         repos = json.load(f)
-
+    
+    new_repos = get_top_python_repos(top_n=5000)
+    repos = list(set(repos + new_repos))
+    with open(output_dir, "w") as f:
+        json.dump(repos, f)
+    
     clone_count = 0
     for repo in repos:
         if os.path.exists(os.path.join(clone_dir, repo.split('/')[-1])):
             continue
 
         pr_count = get_pull_request_count(repo)
-        if pr_count <= 100:
+        if pr_count <= 50:
             continue
 
         repo_size = get_repo_size(repo)

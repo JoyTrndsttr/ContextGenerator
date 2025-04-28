@@ -254,6 +254,7 @@ class AgentRefiner:
                 results.append(result)
                 flag_for_context_change = True #没有被任何的continue语句跳过
         record["definitions"], record["results"] = "omitted", results
+        print(f"Successfully processed record {record['_id']}")
         return record
 
 def process_repo_group(config, repo, records):
@@ -269,8 +270,8 @@ def process_repo_group(config, repo, records):
                 agent = AgentRefiner(config, record)
                 record = agent.process()
                 # 原子化写入操作（追加模式）
-                with open(output_file, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(record) + "\n")
+                # with open(output_file, "a", encoding="utf-8") as f:
+                #     f.write(json.dumps(record) + "\n")
             except Exception as e:
                 print(f'Error processing ID {id}: {e}')
                 traceback.print_exc()
@@ -323,25 +324,25 @@ def main():
     }
     
 
-    # # 继续处理未完成的记录
-    # with open(config["output_path"], "r", encoding="utf-8") as f0:
-    #     _records = [json.loads(line) for line in f0]
-    #     ids = [record["_id"] for record in _records]
+    # 继续处理未完成的记录
+    with open(config["output_path"], "r", encoding="utf-8") as f0:
+        _records = [json.loads(line) for line in f0]
+        # ids = [record["_id"] for record in _records]
 
     # 读取数据集
     with open(config["dataset_path"], "r", encoding="utf-8") as f:
         records = [json.loads(line) for line in f]
         # records = json.load(f)
         # records = [record for record in records if record["_id"] not in ids]
-        records = records[:3000]
+        # records = records[:3000]
         print(f"待处理记录数: {len(records)}")
 
-    # # 测试单个记录
-    # # config["output_path"] = '/mnt/ssd2/wangke/dataset/AgentRefiner/tmp_result.json'
-    # record = [record for record in records if record["_id"] == -5988]
-    # # record = [records[0]]
-    # process_repo_group(config, record[0]["repo"], record)
-    # return
+    # 测试单个记录
+    # config["output_path"] = '/mnt/ssd2/wangke/dataset/AgentRefiner/tmp_result.json'
+    record = [record for record in records if record["_id"] == 264]
+    # record = [records[0]]
+    process_repo_group(config, record[0]["repo"], record)
+    return
 
     # 按repo分组（确保同repo顺序处理）
     repo_map = defaultdict(list)

@@ -7,19 +7,10 @@ import getProjectCommitState
 from getProjectCommitState import CLBPP
 import re
 import traceback
-# config = {
-#     "dataset_path": "/mnt/ssd2/wangke/dataset/datasets.json",
-#     "output_path": '/mnt/ssd2/wangke/dataset/map_result/',
-#     "record_path": '/mnt/ssd2/wangke/dataset/map_result/llama_map.json',
-#     "result_path": '/mnt/ssd2/wangke/dataset/map_result/llama_result.json'
-# }
-# config = {
-#     "dataset_path": "/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json",
-#     "output_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/CR_and_CRN_4_6.json"
-# }
 config = {
-    "dataset_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_repo_datasets.json",
-    "output_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_repo_datasets_filtered.json"
+    "dataset_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all.json",
+    "output_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_filtered2.json",
+    "log_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/log.json"
 }
 
 def get_json_value_number(str, key):
@@ -48,6 +39,7 @@ def filter_record_by_new_identifier(record):
     old_identifiers = [def_bef.text.decode('utf-8') for def_bef in definitions_before_refinement]
     old_identifiers = list(set(old_identifiers))
 
+    # 应用ground truth补丁
     diff = contextGenerator.code_diff
     file_path = contextGenerator.file_path
     try:
@@ -89,7 +81,8 @@ def filter_record_by_new_identifier(record):
     for identifier in new_identifiers:
         if identifier not in old_identifiers:
             if record["review"].find(identifier) == -1: new_added_identifiers_review_strict.append(identifier)
-            if identifier in precise_definitions_names: new_added_identifiers_definition_strict.append(identifier)
+            if identifier in precise_definitions_names:
+                if contextGenerator.check_identifier_valid(identifier): new_added_identifiers_definition_strict.append(identifier)
             new_added_identifiers.append(identifier)
     if new_added_identifiers:
         record["old_identifiers"] = old_identifiers
@@ -101,74 +94,63 @@ def filter_record_by_new_identifier(record):
     else:
         return None
 
+def filtered_by_relationship_between_diff_and_review_with_LLMs(record):
+    old, review, new = record["old"], record["review"], record["new"]
+    prompt_for_dataset_valid_or_discard_estimation = model.prompt_for_dataset_valid_or_discard_estimation(old, review, new)
+    _, think_for_dataset_valid_or_discard_estimation, dataset_valid_or_discard_estimation_result_json = model.get_full_deepseek_response(prompt_for_dataset_valid_or_discard_estimation)
+    record["dataset_valid_or_discard_estimation"] = {
+        "Classification": get_json_value_string(dataset_valid_or_discard_estimation_result_json, "Classification"),
+        "Reason": get_json_value_string(dataset_valid_or_discard_estimation_result_json, "Reason"),
+        "Think_for_dataset_valid_or_discard_estimation": think_for_dataset_valid_or_discard_estimation.split('\n')
+    }
+    record["valid_or_discard"] = "valid" if record["dataset_valid_or_discard_estimation"]["Classification"].find("Valid") != -1 else "discard"
+    return record
+
+def filtered_by_huristics_approaches(record):
+    if record["review"].find("```") != -1: raise Exception("Review contains code block")
+    if record["review"].find("suggestion") != -1: raise Exception("Review contains suggestion")
+    if not (record["new_added_identifiers_review_strict"] and record["new_added_identifiers_definition_strict"]): raise Exception("No new strictlyadded identifiers")
+    return record
+
 with open(config['output_path'], 'a') as f0:
     with open(config['dataset_path'], 'r') as f:
         records = [json.loads(line) for line in f]
         # records = [records[10]]
         # records = json.load(f)
-        # records = [record for record in records if record["_id"]==38]
+        # records = [record for record in records if record["_id"]==85]
+        count = {
+            "Total": len(records),
+            "Successful_processed": 0,
+            "No_new_identifier_found": 0,
+            "Low_quality_sample": 0,
+            "No_new_strictlyadded_identifiers": 0,
+        }
         for record in records:
             print(f"Processing {record['_id']}")
+            count["Total"] += 1
             try:
-                filtered_record = filter_record_by_new_identifier(record)
-                if filtered_record:
-                    f0.write(json.dumps(filtered_record, ensure_ascii=False) + '\n')
+                pre_filtered_record = filter_record_by_new_identifier(record)
+                if not pre_filtered_record: 
+                    print(f"No new identifier found in {record['_id']}")
+                    count["No_new_identifier_found"] += 1
+                    continue
+                filtered_record = filtered_by_relationship_between_diff_and_review_with_LLMs(record)
+                if not filtered_record: 
+                    print(f"Low quality sample for {record['_id']}")
+                    count["Low_quality_sample"] += 1
+                    continue
+                strictly_filtered_record = filtered_by_huristics_approaches(filtered_record)
+                if not strictly_filtered_record: 
+                    print(f"No strictly added identifier found in {record['_id']}")
+                    count["No_new_strictlyadded_identifiers"] += 1
+                    continue
+                f0.write(json.dumps(strictly_filtered_record, ensure_ascii=False) + '\n')
+                count["Successful_processed"] += 1
             except Exception as e:
                 print(f"Error processing {record['_id']}: {e}")
+                key = e.args[0]
+                count[key] = count.get(key, 0) + 1
                 traceback.print_exc()
-#             try:
-#                 print(f"Processing {record['_id']}")
-
-#                 new_line = record["new"].split("\n")
-#                 new_line_add_flag = False
-#                 for line in new_line:
-#                     if line.startswith('+') : new_line_add_flag = True
-#                 if not new_line_add_flag: continue
-#                 if record["review"].find("```") != -1:continue
-
-#                 if record["review"].find("suggestion") != -1:#含有suggestion的不太可能需要上下文
-#                     continue
-                
-#                 old = record["old"]
-
-#                 comment_info, review_url = get_comment_info(record)
-#                 record["comment"] = comment_info
-#                 comment = record["comment"]
-#                 diff_hunk_lines = comment["diff_hunk"].split('\n')
-#                 start = int(re.findall(r'(\d+)', diff_hunk_lines[0])[2])
-#                 if comment["original_start_line"] and comment["original_start_line"]-start+1 < len(diff_hunk_lines):
-#                     comment["review_hunk_start_line"] = diff_hunk_lines[comment["original_start_line"]-start+1][1:] #加1是因为第一行是code_diff_hunk的prefix
-#                 index = len(diff_hunk_lines)-1 # 指向review_position_line
-#                 for i in range(index, -1, -1):
-#                     line = diff_hunk_lines[i][1:]
-#                     if line:
-#                         comment["review_position_line"] = line
-#                         break
-
-#                 review_line = record["comment"]["review_position_line"]
-#                 flag = False
-#                 for line in old.split("\n"):
-#                     if normalize_text(line) == normalize_text(review_line):
-#                         flag = True
-#                         break
-#                 if not flag: continue
-
-#                 prompt_for_repo_context_dependency_estimation = model.prompt_for_repo_context_dependency_estimation(record["old"], record["review"], record["new"], record["comment"])
-#                 _, think_for_repo_context_dependency_estimation, repo_context_dependency_estimation_result_json = model.get_full_deepseek_response(prompt_for_repo_context_dependency_estimation)
-#                 record["repo_context_dependency_estimation"] = {
-#                     "Additional_context_required": get_json_value_number(repo_context_dependency_estimation_result_json, "Additional_context_required"),
-#                     "Reason_for_require_additional_context": get_json_value_string(repo_context_dependency_estimation_result_json, "Reason_for_require_additional_context"),
-#                     "Think_for_repo_context_dependency_estimation": think_for_repo_context_dependency_estimation.split('\n')
-#                 }
-
-#                 if record["repo_context_dependency_estimation"]["Additional_context_required"] == "0":
-#                     continue
-
-#                 if not record["old"].startswith("\n"):
-#                     record["old"] = "#" + record["old"]
-#                     record["new"] = "#" + record["new"]
-#                 record["old"] = [line.strip() for line in record["old"].split("\n") if line.strip()]
-#                 record["new"] = [line.strip() for line in record["new"].split("\n") if line.strip()]
-#                 f0.write(json.dumps(record, ensure_ascii=False) + '\n')
-#             except Exception as e:
-#                 print(f"Error processing {record['_id']}: {e}")
+        #将count的信息写入文件
+        with open(config['log_path'], 'a') as f1:
+            f1.write(json.dumps(count, ensure_ascii=False) + '\n')

@@ -55,7 +55,7 @@ class PythonContextGenerator:
             if child.start_point[0] > self.end_index or child.end_point[0] < self.start_index:
                 continue
             if len(child.children) == 0:
-                if child.start_point[0] in range(self.start_index, self.end_index):
+                if self.start_index <= child.start_point[0] <= self.end_index:
                     if child.type in ["identifier"]:
                         self.node_list.append(child)
             else:
@@ -108,15 +108,26 @@ class PythonContextGenerator:
                 if definition:
                     if definition['name'] not in self.name_list:
                         definition['caller'] = current_function
-                        # self.context.setdefault(current_function,[]).append(definition) #仅包含四个元素的definition对象
                         self.precise_definitions.append(definition) #包含五个元素的definition对象
-                        # self.precise_context.setdefault(current_function,[]).append({'name': definition['name'], 'type': definition['type']})
                         self.definitions.append(_definition) #完整版的definition对象
                         self.name_list.append(definition['name']) #用于去重
                         self.calls.append((current_function, definition['name'])) #存储调用关系
         # print(self.context)
         return self.precise_definitions
     
+    def check_identifier_valid(self, identifier):
+        # 此identifier的定义不在code block范围内，且不是内置函数，才算valid
+        try:
+            if identifier not in self.name_list: return False
+            definition = next((definition for definition in self.definitions if definition.name == identifier), None)
+            print(definition.module_path._str)
+            if definition.module_path._str.find(self.repo_name.split('/')[-1]) == -1: return False #不查找内置函数的定义
+            if definition.module_path._str == self.file_path and self.start_index <= definition.line - 1 <= self.end_index:
+                return False
+            return True
+        except:
+            return False
+
     def updateSource(self, name):
         #根据name找到对应的definition,更新self的参数以获取进一步的context
         for definition in self.definitions:

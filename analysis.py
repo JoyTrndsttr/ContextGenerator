@@ -1,6 +1,6 @@
 import json
 import model
-with open('/mnt/ssd2/wangke/dataset/AgentRefiner/result_5_3.json', 'r') as f:
+with open('/mnt/ssd2/wangke/dataset/AgentRefiner/result_4.18.json', 'r') as f:
 # with open('/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/CR_and_CRN.json', 'r') as f:
 # with open('/mnt/ssd2/wangke/dataset/AgentRefiner//mnt/ssd2/wangke/dataset/AgentRefiner/datasets/CR_and_CRN.json.json', 'r') as f:
 # with open('/mnt/ssd2/wangke/dataset/AgentRefiner/new_map_result_deepseek.json', 'r') as f:
@@ -41,6 +41,7 @@ with open('/mnt/ssd2/wangke/dataset/AgentRefiner/result_5_3.json', 'r') as f:
         
 
         results = record['results']
+        if not (record["new_added_identifiers_review_strict"] and record["new_added_identifiers_definition_strict"]): continue
         if not record.get("id", None): record["id"] = record["_id"]
         # if not record["id"] > 0 : continue
         # if record["id"] > 0 : continue
@@ -169,6 +170,7 @@ with open('/mnt/ssd2/wangke/dataset/AgentRefiner/result_5_3.json', 'r') as f:
     # # with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_negative_deepseek.json', 'w') as f:
     with open('/mnt/ssd2/wangke/dataset/cr_data/case_study.json', 'w') as f:
         print(f"len(ids):{len(ids)}")
-        records = [record for record in records if record["_id"] in ids]
+        # records = [record for record in records if record["_id"] in ids]
+        records = [record for record in records if (record["new_added_identifiers_review_strict"] and record["new_added_identifiers_definition_strict"])]
         for record in records: record["definitions"] = "omit"
         json.dump(records, f, indent=4)

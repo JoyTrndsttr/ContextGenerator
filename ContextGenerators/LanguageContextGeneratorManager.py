@@ -20,10 +20,6 @@ import traceback
 # from ContextGenerators.PythonContextGenerator import PythonContextGenerator
 from ContextGenerators.PythonContextGenerator import PythonContextGenerator
 
-# 设置日志记录
-logging.basicConfig(filename='debug.log', level=logging.DEBUG,
-                    format='%(asctime)s - %(levelname)s - %(message)s', filemode='w')
-
 class LanguageContextGenerator:
     def __init__(self, record):
         #初始化变量
@@ -87,7 +83,8 @@ class LanguageContextGenerator:
 
         #获取文件后缀并加载对应的语言解析器和上下文生成器
         self.file_extension = os.path.splitext(self.file_path)[1]
-        if self.file_extension not in ['.py', '.java']: raise Exception("Unsupported file type")
+        if self.file_extension not in ['.py', '.java']: 
+            raise Exception("Unsupported file type")
         self.parser = self.language_parsers[self.file_extension]
         self.tree,self.source_code = self.parse_file(self.file_path, self.parser)
         self.context_generator = None

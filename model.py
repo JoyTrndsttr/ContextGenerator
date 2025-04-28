@@ -21,6 +21,45 @@ logging.basicConfig(filename='log.txt', level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s', filemode='w')
 deepseek_model = RequestLLM()
 
+def prompt_for_dataset_valid_or_discard_estimation(old_code: str, review: str, new_code: str) -> str:
+    prompt = "\nTask Prompt: Classify Code Review Data Sample for Dataset Quality Filtering"
+
+    prompt += "\nYou are a researcher building a high-quality dataset to train automated code review tools."
+    prompt += "\nEach data sample contains:"
+    prompt += "\n- A code block (before revision),"
+    prompt += "\n- A reviewer’s comment,"
+    prompt += "\n- And a revised version of the code block (ground truth)."
+
+    prompt += "\nYour goal is to **categorize this sample** into one of the following types for dataset construction:"
+
+    prompt += "\n\n1. **Valid** —  The developer's change from the code block to the revised version directly reflects or fulfills the intent expressed in the reviewer’s comment."
+    prompt += "\n2. **Unclear comment** — The comment is too vague or ambiguous; even a human cannot understand what should be implemented."
+    prompt += "\n3. **No change asked** — The comment does not suggest or request any code change."
+    prompt += "\n4. **Ignored comment** — The comment does request a code change, but the developer made unrelated changes instead."
+    prompt += "\n5. **Wrong linking** — The comment appears to be mistakenly associated with this code block (not semantically relevant)."
+    prompt += "\n6. **Other** — Any other invalid case not captured above."
+
+    prompt += "\n\nTo classify correctly:"
+    prompt += "\n- First compare the `old_code` and `new_code` to see what changed."
+    prompt += "\n- Then analyze whether the change addresses something that was asked or implied by the reviewer’s comment."
+
+    prompt += "\n\nHere is the original code block:"
+    prompt += f"\n```\n{old_code}\n```"
+    prompt += "\nHere is the reviewer’s comment:"
+    prompt += f"\n```\n{review}\n```"
+    prompt += "\nHere is the revised code (ground truth):"
+    prompt += f"\n```\n{new_code}\n```"
+
+    prompt += "\n\nOutput Format:"
+    prompt += "\n```json"
+    prompt += "\n{"
+    prompt += "\n  \"Classification\": \"<One of: Valid | Unclear comment | No change asked | Ignored comment | Wrong linking | Other>\","
+    prompt += "\n  \"Reason\": \"<Brief explanation of your decision>\""
+    prompt += "\n}"
+    prompt += "\n```"
+
+    return prompt
+
 def prompt_for_repo_context_dependency_estimation(old_code: str, review: str, new_code: str, review_info) -> str:
     prompt = "\nTask Prompt: Evaluate Whether a Code Refinement Task Requires Repository Context"
 

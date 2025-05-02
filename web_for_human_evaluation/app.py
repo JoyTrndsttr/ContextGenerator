@@ -1,6 +1,8 @@
 import gradio as gr
 import json
 import os
+import re
+import copy
 
 # 文件路径
 data_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_filtered_first1k.json"
@@ -21,29 +23,55 @@ if os.path.exists(output_file):
 
 # 根据 last_passed_id 筛选出待审查记录
 records_to_review = [r for r in all_records if r.get("_id", 0) > last_passed_id]
-records_to_review = [record for record in records_to_review if record["dataset_valid_or_discard_estimation"]["Classification"] = "Valid"]
+records_to_review = [record for record in records_to_review if record["dataset_valid_or_discard_estimation"]["Classification"] == "Valid"]
 
 # 使用 index 来跟踪当前展示位置
 index = 0
 
+def split_diff(diff):
+    diff_lines = diff.split("\n")[1:]
+    old_lines = []
+    new_lines = []
+    for line in diff_lines:
+        if line.startswith("-"):
+            old_lines.append(line)
+        elif line.startswith("+"):
+            new_lines.append(line)
+        else:
+            old_lines.append(line)
+            new_lines.append(line)
+    return old_lines, new_lines
+
+def review_line_exist_in_old(old_lines, review_line):
+    def normalize_text(text):
+        text = re.sub(r'\W+','', text)
+        return text
+
+    old_lines = [normalize_text(line) for line in old_lines]
+    review_line = normalize_text(review_line)
+    return review_line in old_lines
+
 def show_record():
     global index
     if index >= len(records_to_review):
-        return "✅ 所有记录已评估完毕。", f"{len(passed_records)} / {len(all_records)}"
-    record = records_to_review[index]
+        return "✅ 所有记录已评估完毕。", f"{len(passed_records)} / {len(records_to_review)}"
+    record = copy.deepcopy(records_to_review[index])
     record["old"] = record["old"].split("\n")
     record["new"] = record["new"].split("\n")
     record["diff_hunk"] = record["diff_hunk"].split("\n")
+    if not review_line_exist_in_old(record["old"], record["comment"]["review_position_line"]) : reject_record()
     record["path"] = "omit"
     record["code_diff"] = "omit"
-    # 使用json.dumps来格式化输出，并且确保输出格式正确
-    return json.dumps(record, ensure_ascii=False, indent=2), f"{len(passed_records)} / {len(all_records)}"
+    return json.dumps(record, ensure_ascii=False, indent=2), f"{index + 1} / {len(records_to_review)}"
 
 def pass_record():
     global index
     if index >= len(records_to_review):
-        return "✅ 所有记录已评估完毕。", f"{len(passed_records)} / {len(all_records)}"
+        return "✅ 所有记录已评估完毕。", f"{len(passed_records)} / {len(records_to_review)}"
     record = records_to_review[index]
+    old, new = split_diff(record["diff_hunk"])
+    record["old"] = '\n'.join(old)
+    record["new"] = '\n'.join(new)
     with open(output_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
     index += 1
@@ -53,7 +81,7 @@ def pass_record():
 def reject_record():
     global index
     if index >= len(records_to_review):
-        return "✅ 所有记录已评估完毕。", f"{len(passed_records)} / {len(all_records)}"
+        return "✅ 所有记录已评估完毕。", f"{len(passed_records)} / {len(records_to_review)}"
     index += 1
     return show_record()
 

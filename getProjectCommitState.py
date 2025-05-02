@@ -1,12 +1,7 @@
-import psycopg2
-from psycopg2 import sql
 import subprocess
-import requests
 import os
 import json
 from utils.RequestGitHub import RequestGitHub
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
 import re
 
 # 用来控制获取的GitHub token
@@ -14,26 +9,6 @@ requestGitHub = RequestGitHub()
 
 # 最大查找 parent commit 的次数
 MAX_PARENT_SEARCH = 100
-
-# 创建一个带有重试机制的 requests 会话
-def requests_retry_session(
-    retries=5,
-    backoff_factor=0.3,
-    status_forcelist=(500, 502, 504),
-    session=None,
-):
-    session = session or requests.Session()
-    retry = Retry(
-        total=retries,
-        read=retries,
-        connect=retries,
-        backoff_factor=backoff_factor,
-        status_forcelist=status_forcelist,
-    )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    return session
 
 #获取Json文件中的信息
 def get_info_from_jsonfile(file_path, id):
@@ -45,22 +20,15 @@ def get_info_from_jsonfile(file_path, id):
 
 # 使用 GitHub API 获取 commit 信息
 def get_commit_info(repo, commit_sha):
-    def get_commit_info_by_page(url):
-        headers = {'Authorization': f'token {requestGitHub.next_github_token()}'}
-        response = requests_retry_session().get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        link_header = response.headers.get('Link', None)
-        commit_info = response.json()
-        return link_header,commit_info
-    
     url = f"https://api.github.com/repos/{repo}/commits/{commit_sha}"
-    link_header,commit_infos = get_commit_info_by_page(url)
-    while link_header:
-        if link_header.split('page=')[1].split('>')[0] == '1' : break
-        url = link_header.split('<')[1].split('>')[0]
-        link_header,commit_info = get_commit_info_by_page(url)
-        commit_infos['files'].extend(commit_info['files'])
-    return commit_infos
+    full_content = requestGitHub.get_full_content(url)
+    if not full_content: raise Exception(f"Failed to get commit info for {commit_sha}")
+    if len(full_content) == 1: return full_content[0]
+    else:
+        commit_infos = full_content[0]
+        for i in range(1, len(full_content)):
+            commit_infos['files'].extend(full_content[i]['files'])
+        return commit_infos
 
 # 使用 GitHub API 获取评论信息
 def get_comment_info(record):
@@ -71,10 +39,7 @@ def get_comment_info(record):
     repo, review, commit_url = record["repo"],record["review"],record["commit_url"]
     pull = commit_url.split('pull/')[1].split('/')[0]
     review_url = f"https://api.github.com/repos/{repo}/pulls/{pull}/comments"
-    headers = {'Authorization': f'token {requestGitHub.next_github_token()}'}
-    response = requests_retry_session().get(review_url, headers=headers, timeout=10)
-    response.raise_for_status()
-    comments = response.json()
+    comments = requestGitHub.get_response(review_url).json()
     _comment = None
     for comment in comments:
         if normalize_text(comment['body']) == normalize_text(review):
@@ -92,11 +57,7 @@ def get_comment_info(record):
     return comment_info, review_url
 
 def get_comment(review_url):
-    headers = {'Authorization': f'token {requestGitHub.next_github_token()}'}
-    response = requests_retry_session().get(review_url, headers=headers, timeout=10)
-    response.raise_for_status()
-    comment = response.json()
-    return comment
+    return requestGitHub.get_response(review_url).json()
 
 # 应用文件的补丁
 def apply_patch(repo_path, file_info):
@@ -118,7 +79,6 @@ def apply_patch(repo_path, file_info):
         if not 'patch' in file_info:
             return
         patch = file_info['patch']
-        #TODO: patch也有分页问题，需要根据commit的api查询url，加上```?page=2````参数处理
         try:
             with open(file_path, 'r', encoding='utf-8') as file:
                 file_content = file.readlines()

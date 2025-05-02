@@ -1,15 +1,12 @@
 import json
 import model
-from AgentRefiner import AgentRefiner
-from getProjectCommitState import get_comment_info
 from ContextGenerators.LanguageContextGeneratorManager import LanguageContextGenerator
-import getProjectCommitState
 from getProjectCommitState import CLBPP
 import re
 import traceback
 config = {
-    "dataset_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all.json",
-    "output_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_filtered2.json",
+    "dataset_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_first4w.json",
+    "output_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_filtered_3.json",
     "log_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/log.json"
 }
 
@@ -112,20 +109,29 @@ def filtered_by_huristics_approaches(record):
     if not (record["new_added_identifiers_review_strict"] and record["new_added_identifiers_definition_strict"]): raise Exception("No new strictlyadded identifiers")
     return record
 
+with open(config['log_path'], 'r') as f00:
+    count = json.load(f00)
+
 with open(config['output_path'], 'a') as f0:
     with open(config['dataset_path'], 'r') as f:
         records = [json.loads(line) for line in f]
+        records = records[18193:]
         # records = [records[10]]
         # records = json.load(f)
-        # records = [record for record in records if record["_id"]==85]
-        count = {
-            "Total": len(records),
-            "Successful_processed": 0,
-            "No_new_identifier_found": 0,
-            "Low_quality_sample": 0,
-            "No_new_strictlyadded_identifiers": 0,
-        }
+        # records = [record for record in records if record["_id"]==197]
+        if not count:
+            count = {
+                "Total": len(records),
+                "Successful_processed": 0,
+                "No_new_identifier_found": 0,
+                "Low_quality_sample": 0,
+                "No_new_strictlyadded_identifiers": 0,
+            }
         for record in records:
+            #将count的信息写入文件
+            with open(config['log_path'], 'w') as f1:
+                count_str_keys = {str(k): v for k, v in count.items()}
+                json.dump(count_str_keys, f1, indent=4)
             print(f"Processing {record['_id']}")
             count["Total"] += 1
             try:
@@ -148,9 +154,8 @@ with open(config['output_path'], 'a') as f0:
                 count["Successful_processed"] += 1
             except Exception as e:
                 print(f"Error processing {record['_id']}: {e}")
-                key = e.args[0]
+                try:
+                    key = e.args[0]
+                except: key = "Others"
                 count[key] = count.get(key, 0) + 1
                 traceback.print_exc()
-        #将count的信息写入文件
-        with open(config['log_path'], 'a') as f1:
-            f1.write(json.dumps(count, ensure_ascii=False) + '\n')

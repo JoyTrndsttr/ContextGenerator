@@ -23,7 +23,6 @@ if os.path.exists(output_file):
 
 # 根据 last_passed_id 筛选出待审查记录
 records_to_review = [r for r in all_records if r.get("_id", 0) > last_passed_id]
-# records_to_review = [record for record in records_to_review if record["dataset_valid_or_discard_estimation"]["Classification"] == "Valid"]
 
 # 使用 index 来跟踪当前展示位置
 index = 0
@@ -54,20 +53,34 @@ def review_line_exist_in_old(old_lines, review_line):
 def show_record():
     global index
     if index >= len(records_to_review):
-        return "✅ 所有记录已评估完毕。", f"{len(passed_records)} / {len(records_to_review)}"
+        return "✅ 所有记录已评估完毕。", f"{len(passed_records)} / {len(records_to_review)}", "", "", "", ""
     record = copy.deepcopy(records_to_review[index])
     record["old"] = record["old"].split("\n")
     record["new"] = record["new"].split("\n")
     record["diff_hunk"] = record["diff_hunk"].split("\n")
-    if not review_line_exist_in_old(record["old"], record["comment"]["review_position_line"]) : reject_record()
+    
+    # 显示相关信息
+    review = record.get("review", "无")
+    diff_hunk = "\n".join(record["diff_hunk"])
+    review_position_line = record["comment"].get("review_position_line", "未知")
+    
+    if not review_line_exist_in_old(record["old"], review_position_line):
+        reject_record()
+
     record["path"] = "omit"
     record["code_diff"] = "omit"
-    return json.dumps(record, ensure_ascii=False, indent=2), f"{index + 1} / {len(records_to_review)}"
+    
+    record_content = json.dumps(record, ensure_ascii=False, indent=2)
+    
+    # 显示进度
+    progress = f"{index + 1} / {len(records_to_review)}"
+
+    return progress, review, diff_hunk, review_position_line, record_content
 
 def pass_record():
     global index
     if index >= len(records_to_review):
-        return "✅ 所有记录已评估完毕。", f"{len(passed_records)} / {len(records_to_review)}"
+        return "✅ 所有记录已评估完毕。", f"{len(passed_records)} / {len(records_to_review)}", "", "", "", ""
     record = records_to_review[index]
     old, new = split_diff(record["diff_hunk"])
     record["old"] = '\n'.join(old)
@@ -81,22 +94,31 @@ def pass_record():
 def reject_record():
     global index
     if index >= len(records_to_review):
-        return "✅ 所有记录已评估完毕。", f"{len(passed_records)} / {len(records_to_review)}"
+        return "✅ 所有记录已评估完毕。", f"{len(passed_records)} / {len(records_to_review)}", "", "", "", ""
     index += 1
     return show_record()
 
 with gr.Blocks() as demo:
     gr.Markdown("# 👁️ 人工数据筛选界面")
-    # 使用 gr.Code 组件来显示 JSON 格式的内容并高亮
-    record_display = gr.Code(label="当前记录内容", language="json", lines=20)
-    progress_display = gr.Textbox(label="进度")
-    with gr.Row():
-        btn_pass = gr.Button("✅ 通过")
-        btn_reject = gr.Button("❌ 不通过")
-    btn_pass.click(pass_record, outputs=[record_display, progress_display])
-    btn_reject.click(reject_record, outputs=[record_display, progress_display])
+    
+    # 创建布局
+    with gr.Column():
+        progress_display = gr.Textbox(label="进度", interactive=False, lines=1)
+        review_display = gr.Textbox(label="Review", interactive=False, lines=3)
+        diff_display = gr.Textbox(label="Code Diff", interactive=False, lines=5)
+        review_position_display = gr.Textbox(label="评论位置", interactive=False, lines=2)
+        record_display = gr.Code(label="当前记录内容", language="json", lines=20)
+
+        # 按钮
+        with gr.Row():
+            btn_pass = gr.Button("✅ 通过")
+            btn_reject = gr.Button("❌ 不通过")
+
+    # 绑定按钮事件
+    btn_pass.click(pass_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_display])
+    btn_reject.click(reject_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_display])
 
     # 初始化内容
-    demo.load(show_record, outputs=[record_display, progress_display])
+    demo.load(show_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_display])
 
 demo.launch(server_name="0.0.0.0", server_port=7860)

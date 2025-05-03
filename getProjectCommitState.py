@@ -3,6 +3,7 @@ import os
 import json
 from utils.RequestGitHub import RequestGitHub
 import re
+import traceback
 
 # 用来控制获取的GitHub token
 requestGitHub = RequestGitHub()
@@ -37,6 +38,7 @@ def get_comment_info(record):
         return text
 
     repo, review, commit_url = record["repo"],record["review"],record["commit_url"]
+    old_lines = [line[1:] for line in record["old"].split('\n')]
     pull = commit_url.split('pull/')[1].split('/')[0]
     review_url = f"https://api.github.com/repos/{repo}/pulls/{pull}/comments"
     comments = requestGitHub.get_response(review_url).json()
@@ -47,14 +49,33 @@ def get_comment_info(record):
             break
     if _comment:
         comment_info = {
-            "original_position": comment["original_position"],
-            "original_start_line": comment["original_start_line"],
-            "original_line": comment["original_line"],
-            "diff_hunk": comment["diff_hunk"],
+            "original_position": _comment["original_position"],
+            "original_start_line": _comment["original_start_line"],
+            "original_line": _comment["original_line"],
+            "diff_hunk": _comment["diff_hunk"],
+            "review_position_line": _comment["diff_hunk"].split('\n')[-1][1:], #一般来说最后一行是review指向的行
         }
+        diff_hunk_lines = _comment["diff_hunk"].split('\n')
+        try:
+            start = int(re.search(r'(\d+)', diff_hunk_lines[0]).group(1))
+            if _comment["original_start_line"]:
+                comment_info["review_hunk_start_line"] = diff_hunk_lines[_comment["original_start_line"]-start+1][1:] #加1是因为第一行是code_diff_hunk的prefix
+            # diff_hunk字段的最后一行一般就是review指向的行，然而在GitHub的结构中，review通常绑定到PR的当前状态而不是单独的commit，因此review_position_line可能指向错误的行，甚至是已经被删除的行/review之后新增的行
+            # 举例：https://github.com/celery/celery/pull/9038/commits/0d8936d909f385eca854feb6aee971c97793b0b0 此提交甚至比review的时间要晚，而review指向了此次提交新增的行
+            # 一些讨论：https://github.com/Reviewable/Reviewable/issues/437
+            # 因此，我们的做法是从diff_hunk最后一行开始，找到第一个非空行且出现在old_lines中的行，作为review_position_line
+            index = len(diff_hunk_lines)-1
+            for i in range(index, -1, -1):
+                line = diff_hunk_lines[i][1:]
+                if line and line in old_lines:
+                    comment_info["review_position_line"] = line
+                    break
+            return comment_info, _comment['url']
+        except Exception as e:
+            print(f"Error finding start position of comment in old code: {e}")
+            traceback.print_exc()
     else:
-        comment_info = None
-    return comment_info, review_url
+        return None, review_url
 
 def get_comment(review_url):
     return requestGitHub.get_response(review_url).json()
@@ -119,7 +140,6 @@ def apply_patch(repo_path, file_info):
         delFile()
     else:
         patchApply()
-
 
 #获取commit信息
 def get_commit_details(repo, commit_url):

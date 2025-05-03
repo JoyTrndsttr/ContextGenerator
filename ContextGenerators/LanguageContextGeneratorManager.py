@@ -57,29 +57,12 @@ class LanguageContextGenerator:
             if patch: patchs.append(patch)
             for patch in patchs:
                 patch = '\n'.join(patch)
-                match, start_index,end_index = self.compare_old_and_diff(self.old, patch)
+                match, start_index, end_index = self.compare_old_and_diff(self.old, patch)
                 self.file_path = os.path.join(self.repo_path, path)
                 if match: break
             if match: break
         if not match or not os.path.exists(self.file_path): raise Exception("Cannot match old code in code diff")
         self.code_diff = patch
-
-        #获取评论在old code中指向的位置
-        if self.comment:
-            diff_hunk_lines = self.comment["diff_hunk"].split('\n')
-            try:
-                start = int(re.search(r'(\d+)', diff_hunk_lines[0]).group(1))
-                if self.comment["original_start_line"]:
-                    self.comment["review_hunk_start_line"] = diff_hunk_lines[self.comment["original_start_line"]-start+1][1:] #加1是因为第一行是code_diff_hunk的prefix
-                index = len(diff_hunk_lines)-1 # 指向review_position_line
-                for i in range(index, -1, -1):
-                    line = diff_hunk_lines[i][1:]
-                    if line:
-                        self.comment["review_position_line"] = line
-                        break
-            except Exception as e:
-                print(f"Error finding start position of comment in old code: {e}")
-                traceback.print_exc()
 
         #获取文件后缀并加载对应的语言解析器和上下文生成器
         self.file_extension = os.path.splitext(self.file_path)[1]
@@ -116,7 +99,8 @@ class LanguageContextGenerator:
                         break
             if not flag:
                 return False, -1, -1
-        return True, positions[0], positions[-1]
+        # return True, positions[0], positions[-1]
+        return True, 1, len(code_diff_lines)-1
     
     def load_language(self, language): # 加载语言包
         parser = Parser()

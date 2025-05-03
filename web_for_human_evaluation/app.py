@@ -5,8 +5,8 @@ import re
 import copy
 
 # 文件路径
-data_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_filtered_first1k.json"
-output_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_human_filtered.json"
+data_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_filtered_5.json"
+output_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered.json"
 
 # 读取数据
 with open(data_file, "r", encoding="utf-8") as f:
@@ -23,7 +23,7 @@ if os.path.exists(output_file):
 
 # 根据 last_passed_id 筛选出待审查记录
 records_to_review = [r for r in all_records if r.get("_id", 0) > last_passed_id]
-records_to_review = [record for record in records_to_review if record["dataset_valid_or_discard_estimation"]["Classification"] == "Valid"]
+# records_to_review = [record for record in records_to_review if record["dataset_valid_or_discard_estimation"]["Classification"] == "Valid"]
 
 # 使用 index 来跟踪当前展示位置
 index = 0

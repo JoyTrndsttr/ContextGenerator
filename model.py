@@ -42,6 +42,7 @@ def prompt_for_dataset_valid_or_discard_estimation(old_code: str, review: str, n
     prompt += "\n\nTo classify correctly:"
     prompt += "\n- First compare the `old_code` and `new_code` to see what changed."
     prompt += "\n- Then analyze whether the change addresses something that was asked or implied by the reviewer’s comment."
+    prompt += "\n- **Additionally, generate a new review comment that can perfectly match the code changes between `old_code` and `new_code`.** This new review should reflect the developer's change and fulfill the intent of the reviewer's comment."
 
     prompt += "\n\nHere is the original code block:"
     prompt += f"\n```\n{old_code}\n```"
@@ -55,6 +56,7 @@ def prompt_for_dataset_valid_or_discard_estimation(old_code: str, review: str, n
     prompt += "\n{"
     prompt += "\n  \"Classification\": \"<One of: Valid | Unclear comment | No change asked | Ignored comment | Wrong linking | Other>\","
     prompt += "\n  \"Reason\": \"<Brief explanation of your decision>\""
+    prompt += "\n  \"New Review\": \"<A modified review that perfectly matches the code changes>\""
     prompt += "\n}"
     prompt += "\n```"
 

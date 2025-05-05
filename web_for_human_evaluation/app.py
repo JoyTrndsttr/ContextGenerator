@@ -17,7 +17,13 @@ passed_records = []
 last_passed_id = 0
 if os.path.exists(output_file):
     with open(output_file, "r", encoding="utf-8") as f1:
-        passed_records = [json.loads(line) for line in f1]
+        # passed_records = [json.loads(line) for line in f1]
+        for line in f1:
+            try:
+                record = json.loads(line)
+                passed_records.append(record)
+            except:
+                print(line)
         if passed_records:
             last_passed_id = passed_records[-1].get("_id", 0)
 
@@ -126,12 +132,13 @@ with gr.Blocks() as demo:
         
         diff_display = gr.Textbox(label="Code Diff", interactive=False, lines=5)
         review_position_display = gr.Textbox(label="评论位置", interactive=False, lines=2)
-        record_display = gr.Code(label="当前记录内容", language="json", lines=20)
 
         # 按钮
         with gr.Row():
             btn_pass = gr.Button("✅ 通过")
             btn_reject = gr.Button("❌ 不通过")
+
+        record_display = gr.Code(label="当前记录内容", language="json", lines=20)
 
     # 绑定按钮事件
     def update_suggested_review(review_choice):

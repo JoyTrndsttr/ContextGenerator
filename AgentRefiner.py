@@ -269,9 +269,8 @@ def process_repo_group(config, repo, records):
             try:
                 agent = AgentRefiner(config, record)
                 record = agent.process()
-                # 原子化写入操作（追加模式）
-                # with open(output_file, "a", encoding="utf-8") as f:
-                #     f.write(json.dumps(record) + "\n")
+                with open(output_file, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(record) + "\n")
             except Exception as e:
                 print(f'Error processing ID {id}: {e}')
                 traceback.print_exc()
@@ -317,29 +316,38 @@ def main():
     #     "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result_5_3.json',
     #     # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
     # }
+    # config = {
+    #     "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_repo_datasets_filtered.json',
+    #     "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result_4.18.json',
+    #     # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
+    # }
     config = {
-        "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_repo_datasets_filtered.json',
-        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/result_4.18.json',
+        "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered.json',
+        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_results/result_for_datasets_human_filtered_first100.json',
         # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
     }
-    
 
-    # 继续处理未完成的记录
-    with open(config["output_path"], "r", encoding="utf-8") as f0:
-        _records = [json.loads(line) for line in f0]
+    # # 继续处理未完成的记录
+    # with open(config["output_path"], "r", encoding="utf-8") as f0:
+    #     _records = [json.loads(line) for line in f0]
         # ids = [record["_id"] for record in _records]
+
+    # 被占用的repos
+    occupied_repos = ['modin-project/modin']
 
     # 读取数据集
     with open(config["dataset_path"], "r", encoding="utf-8") as f:
         records = [json.loads(line) for line in f]
         # records = json.load(f)
+        records = [record for record in records if record["repo"] not in occupied_repos]
+        records = records[:10]
         # records = [record for record in records if record["_id"] not in ids]
         # records = records[:3000]
         print(f"待处理记录数: {len(records)}")
 
     # 测试单个记录
     # config["output_path"] = '/mnt/ssd2/wangke/dataset/AgentRefiner/tmp_result.json'
-    record = [record for record in records if record["_id"] == 264]
+    record = [record for record in records if record["_id"] == 115]
     # record = [records[0]]
     process_repo_group(config, record[0]["repo"], record)
     return

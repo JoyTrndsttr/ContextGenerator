@@ -37,7 +37,7 @@ def get_comment_info(record):
         text = re.sub(r'\W+','', text)
         return text
 
-    repo, review, commit_url = record["repo"],record["review"],record["commit_url"]
+    repo, review, commit_url = record["repo"],record["original_review"],record["commit_url"]
     old_lines = [line[1:] for line in record["old"].split('\n')]
     pull = commit_url.split('pull/')[1].split('/')[0]
     review_url = f"https://api.github.com/repos/{repo}/pulls/{pull}/comments"

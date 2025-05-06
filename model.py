@@ -364,7 +364,7 @@ def prompt_for_cross_file_context_summary(review: str, question: str, calls: lis
             else:
                 prompt += f"\nCall {i}: `{caller}` calls `{callee}`"
             prompt += f"\nCallee Implementation:\n```\n{callee_text}\n```"
-            prompt += f"\nPurpose for Checking This Callee: {callee_purpose}"
+            # prompt += f"\nPurpose for Checking This Callee: {callee_purpose}"
 
     prompt += "\n\nYour task:"
     prompt += "\nBased on your findings and the tool’s question, provide a concise summary of the most relevant information needed to answer that question."
@@ -472,3 +472,99 @@ def remove_prefix(old):
         if line.strip() != "":
             old_without_minus.append(line[1:])
     return "\n".join(old_without_minus)
+
+def prompt_for_names_of_relevance_context(review: str, source_code: str, question: str, review_info) -> str:
+    prompt = "\nTask Prompt: Identify Relevant Context Names in File to Support Code Refinement"
+
+    prompt += "\nYou are an intelligent Agent assisting an automated code review tool."
+    prompt += "\nThe tool received the following review comment as guidance for how to improve a code block:"
+    if not review_info or not review_info.get("review_position_line", None):
+        prompt += "\nThe code review for this code is:\n"
+    else:
+        if review_info.get("review_hunk_start_line", None):
+            prompt += f"\nThe reviewer commented on the code from line '{review_info['review_hunk_start_line']}' to line '{review_info['review_position_line']}':"
+        else:
+            prompt += f"\nThe reviewer commented on the line '{review_info['review_position_line']}':"
+    prompt += f"\n```\n{review}\n```"
+
+    prompt += "\nThe tool is trying to refine the code accordingly, but it does not have access to the rest of the file."
+    prompt += "\nTo assist, it has asked the following question to help guide the modification:"
+    prompt += f"\n```\n{question}\n```"
+
+    prompt += "\nYou have access to the **entire source file** that contains the relevant code block. The file content is:"
+    prompt += f"\n```\n{source_code}\n```"
+
+    prompt += "\n\nYour task:"
+    prompt += "\n- Carefully read the full file to identify code elements that are relevant to answering the tool's question."
+    prompt += "\n- These elements may include variables, functions, classes, or modules that are directly involved in, mentioned by, or logically required to implement the reviewer’s intended change."
+    prompt += "\n- For example, if the comment says a certain method should be used and you find that this method belongs to a specific class, then that class is also likely part of the relevant context."
+    prompt += "\n- Similarly, if the comment mentions a method that cannot be found in the file, and you reasonably suspect it belongs to a certain module, then that module name should also be included."
+    prompt += "\n- Do NOT include natural language terms (e.g., comments or docstrings). Only include **Python code identifiers**."
+    prompt += "\n- If you encounter a compound expression like `val.func1`, split and include both `val` and `func1` separately."
+    prompt += "\n- Provide as many as possible, but no more than **10** relevant names."
+
+    prompt += "\n\nAlso provide the purpose of retrieving those context names:"
+    prompt += "\nThe goal is to help the tool identify which parts of the file might provide critical information for answering its question — for example:"
+    prompt += "\n- To determine whether a certain class contains helper methods relevant to the modification;"
+    prompt += "\n- To find out the signature or behavior of a function that may be reused;"
+    prompt += "\n- Or to locate the definition of a module or variable that is referenced but not fully visible in the code block."
+
+    prompt += "\n\nOutput Format:"
+    prompt += "\nReturn your response in the following JSON format:"
+    prompt += "\n```json"
+    prompt += "\n{"
+    prompt += "\n  \"Candidate Context Names\": [\"name1\", \"name2\", ..., \"nameN\"],"
+    prompt += "\n  \"Purpose\": \"<Brief sentence describing why these names are relevant to answering the tool’s question>\""
+    prompt += "\n}"
+    prompt += "\n```"
+
+    return prompt
+
+def prompt_for_deeper_names_of_relevance_context(review: str, question: str, calls: list, purpose: str) -> str:
+    prompt = "\nTask Prompt: Identify Deeper-Level Relevant Context Names from Function/Class Definitions"
+
+    prompt += "\nYou are an intelligent Agent assisting an automated code review tool."
+    prompt += "\nThe tool is refining a code block based on the following reviewer comment:"
+    prompt += f"\n```\n{review}\n```"
+
+    prompt += "\nIt has also asked the following question to better guide the code modification:"
+    prompt += f"\n```\n{question}\n```"
+
+    prompt += "\nPreviously, you examined the source file and identified some related functions or classes."
+    prompt += "\nNow you are provided with the actual definitions of those elements, and your job is to read them carefully and identify **deeper-level context names** that may help further answer the tool’s question."
+
+    prompt += "The purpose to retrieve these deeper-level context names is:"
+    prompt += f"\n```\n{purpose}\n```"
+
+    if len(calls) > 0:
+        prompt += "\n\nHere are the available code definitions you should examine:"
+        for i, call in enumerate(calls, start=1):
+            caller, callee, callee_text, callee_context, callee_purpose = call
+            if caller == callee or caller == "default_function":
+                prompt += f"\nCallee {i}: `{callee}`"
+            else:
+                prompt += f"\nCall {i}: `{caller}` calls `{callee}`"
+            prompt += f"\nCallee Implementation:\n```\n{callee_text}\n```"
+            # prompt += f"\nPurpose for Checking This Callee: {callee_purpose}"
+    
+    prompt += "\n\nYour task:"
+    prompt += "\n- Carefully read the code definitions provided above."
+    prompt += "\n- Identify any new variables, functions, classes, or modules in them that are **likely useful** for answering the question or implementing the reviewed change."
+    prompt += "\n- For example, if a helper function defines a call to another method or accesses a utility object, that newly referenced name may be important to retrieve."
+    prompt += "\n- Do NOT include natural language elements (e.g., comments, docstrings). Only extract Python identifiers."
+    prompt += "\n- If compound calls are observed (e.g., `obj.helper()`), include both `obj` and `helper` as individual names."
+    prompt += "\n- Do not list any name that was already surfaced in a previous context collection round."
+    prompt += "\n- Provide as many as necessary, but **no more than 10**."
+
+    prompt += "\n\nPurpose of retrieving these deeper-level context names:"
+    prompt += "\nThese names will guide the tool in requesting additional context from the repository if needed — such as locating a helper method’s body, checking an object's structure, or validating how a returned value is handled elsewhere."
+
+    prompt += "\n\nOutput Format:"
+    prompt += "\n```json"
+    prompt += "\n{"
+    prompt += "\n  \"Candidate Context Names\": [\"name1\", \"name2\", ..., \"nameN\"],"
+    prompt += "\n  \"Purpose\": \"<Brief sentence describing what the tool is trying to figure out by checking these names>\""
+    prompt += "\n}"
+    prompt += "\n```"
+
+    return prompt

@@ -5,9 +5,9 @@ from getProjectCommitState import CLBPP
 import re
 import traceback
 config = {
-    "dataset_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_first4w.json",
+    "dataset_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_second4w.json",
     "output_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_filtered_5.json",
-    "log_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/log3.json"
+    "log_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/log4.json"
 }
 
 def get_json_value_number(str, key):

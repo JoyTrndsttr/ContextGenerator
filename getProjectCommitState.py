@@ -37,6 +37,7 @@ def get_comment_info(record):
         text = re.sub(r'\W+','', text)
         return text
 
+    if not record.get("original_review", None): record["original_review"] = record["review"]
     repo, review, commit_url = record["repo"],record["original_review"],record["commit_url"]
     old_lines = [line[1:] for line in record["old"].split('\n')]
     pull = commit_url.split('pull/')[1].split('/')[0]
@@ -64,16 +65,20 @@ def get_comment_info(record):
             # 举例：https://github.com/celery/celery/pull/9038/commits/0d8936d909f385eca854feb6aee971c97793b0b0 此提交甚至比review的时间要晚，而review指向了此次提交新增的行
             # 一些讨论：https://github.com/Reviewable/Reviewable/issues/437
             # 因此，我们的做法是从diff_hunk最后一行开始，找到第一个非空行且出现在old_lines中的行，作为review_position_line
-            index = len(diff_hunk_lines)-1
-            for i in range(index, -1, -1):
-                line = diff_hunk_lines[i][1:]
-                if line and line in old_lines:
-                    comment_info["review_position_line"] = line
-                    break
+            # index = len(diff_hunk_lines)-1
+            # for i in range(index, -1, -1):
+            #     line = diff_hunk_lines[i][1:]
+            #     if line and line in old_lines:
+            #         comment_info["review_position_line"] = line
+            #         break
+            comment_info['review_position_line'] = diff_hunk_lines[-1][1:]
+            if comment_info['review_position_line'] not in old_lines:
+                raise Exception(f"Error finding start position of comment in old code: {comment_info['review_position_line']} not in {old_lines}")
             return comment_info, _comment['url']
         except Exception as e:
             print(f"Error finding start position of comment in old code: {e}")
             traceback.print_exc()
+            raise Exception(f"Error finding start position of comment in old code: {comment_info['review_position_line']} not in {old_lines}")
     else:
         return None, review_url
 

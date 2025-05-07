@@ -1,7 +1,7 @@
 import json
 import model
 from ContextGenerators.LanguageContextGeneratorManager import LanguageContextGenerator
-from getProjectCommitState import CLBPP
+from getProjectCommitState import CLBPP, get_commit_details
 import re
 import traceback
 config = {
@@ -27,6 +27,17 @@ def normalize_text(text):
     return text
 
 def filter_record_by_new_identifier(record):
+
+    # 由于CLBPP速度比较慢，这里先根据整个commit涉及到的path过滤一遍没有python文件的记录
+    paths_str, _ = get_commit_details(record["repo"], record["commit_url"])
+    lang_flag = False
+    for path in paths_str.split('\n'):
+        if path.endswith('.py'):
+            lang_flag = True
+            break
+    if not lang_flag:
+        raise Exception("Unsupported file type")
+
     record = CLBPP(record)
     record["old"] = '\n'.join(record["old"].split('\n'))
     record["new"] = '\n'.join(record["new"].split('\n'))

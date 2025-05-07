@@ -32,11 +32,10 @@ class RequestLLM:
             "repetition_penalty": config["repetition_penalty"],
             "temperature": config["temperature"]
         }
-
-        response = requests.post(url, headers=headers, json=data).json()
-        result = response['choices'][0]['message']['content']
-        print(result)
         try:
+            response = requests.post(url, headers=headers, json=data).json()
+            result = response['choices'][0]['message']['content']
+            print(result)
             output = result.split("</think>")[1]
             think = result.split("</think>")[0]
             new_code = re.search(r'```(.*)```', output, re.DOTALL)
@@ -59,4 +58,5 @@ class RequestLLM:
         except Exception as e:
             print(e)
             print("No code found in response 3")
+            print(prompt)
             return None, None, None

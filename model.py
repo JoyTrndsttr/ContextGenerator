@@ -206,54 +206,45 @@ def prompt_for_in_file_context_summary(review: str, source_code: str, question: 
 
     return prompt
 
-def prompt_for_refinement(old_without_minus, review, calls, review_info, with_summary_or_code, with_presice_review_position, clipped_flag, in_file_context_summary, cross_file_context_summary):
+def prompt_for_refinement(old_without_minus, review, review_info, question_for_in_file_context, in_file_context_summary, question_for_cross_file_context, cross_file_context_summary):
     prompt = ""
     prompt += "As a developer, imagine you've submitted a pull request and" \
               " your team leader requests you to make a change to a piece of code." \
               " The old code being referred to in the hunk of code changes is:\n"
     prompt += "```\n{}\n```\n".format(old_without_minus)
-    if not with_presice_review_position or not review_info or not review_info.get("review_position_line", None):
+    if not review_info or not review_info.get("review_position_line", None):
         prompt += "The code review for this code is:\n"
     else:
         if review_info.get("review_hunk_start_line", None):
             prompt += f"The reviewer commented on the code from line '{review_info['review_hunk_start_line']}' to line '{review_info['review_position_line']}':\n"
         else: prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
     prompt += review
-    if with_summary_or_code == 'summary':
-        if in_file_context_summary or cross_file_context_summary: prompt += "\nBased on the review:"
-        if in_file_context_summary: prompt += f"\nyou checked the file where the old code is located and find that:{in_file_context_summary}"
-        if cross_file_context_summary: prompt += f"\nyou checked some definitions of the elements used in the code block and find that:{cross_file_context_summary}"
-    elif with_summary_or_code == 'code':
-        #TODO:加入in-file context
-        if len(calls) > 0:
-            prompt += "\nBased on the review, you checked the repository and find that :\n"
-            for call in calls:
-                caller, callee, callee_text, callee_context, callee_purpose = call
-                callee_text_list = callee_text.split('\n')
-                if len(callee_text_list) > 20:
-                    concise_callee_text = '\n'.join(callee_text_list[:20])
-                match = re.match(r'^\s*def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)\s*:.*$', callee_text_list[0])
-                signature = f"{match.group(1)}({match.group(2)})" if match else callee
-                main_purpose = callee_context.split('Summary:')
-                main_purpose = main_purpose[1].strip() if len(main_purpose) > 1 else callee_context
-                if caller == callee or caller == "default_function": 
-                    if len(callee_text_list) > 20:
-                        prompt += f"\nThe first 20 lines of {signature} are implemented as follows:\n```\n{concise_callee_text}\n``` "
-                    else:
-                        prompt += f"\n{signature} is defined as:\n```\n{callee_text}\n```"
-                else :
-                    if len(callee_text_list) > 20:
-                        prompt += f"\n{caller} calls {signature}, and the first 20 lines of {signature} are implemented as follows:\n```\n{concise_callee_text}\n``` "
-                    else:
-                        prompt += f"\n{caller} calls {signature} which is defined as:\n```\n{callee_text}\n```"
+
+    # if question_for_in_file_context or question_for_cross_file_context:
+    #     prompt += "\n\nBased on the review, you still have some specific questions:"
+    #     if question_for_in_file_context:
+    #         prompt += f"\n- You asked an Agent to check the file containing this code block to answer the following question:"
+    #         prompt += f"\n{question_for_in_file_context}"
+    #         prompt += f"\nThe Agent checked the file and provided the following summary:"
+    #         prompt += f"\n{in_file_context_summary}"
+    #     if question_for_cross_file_context:
+    #         prompt += f"\n- You also asked the Agent to check some cross-file definitions to answer the following question:"
+    #         prompt += f"\n{question_for_cross_file_context}"
+    #         prompt += f"\nThe Agent checked these elements and provided the following summary:"
+    #         prompt += f"\n{cross_file_context_summary}"
+    #     prompt += "\n\nYour Task:"
+    
+    if question_for_in_file_context or question_for_cross_file_context:
+        prompt += "\n\nBased on the review, you check the source code and find that:"
+        if question_for_in_file_context:
+            prompt += f"\n{in_file_context_summary}"
+        if question_for_cross_file_context:
+            prompt += f"\n{cross_file_context_summary}"
+        prompt += "\n\nYour Task:"
+
     prompt += "\nPlease generate the revised code according to the review. " \
               "Please ensure that the revised code follows the original code format" \
               " and comments, unless it is explicitly required by the review."
-    if clipped_flag:
-        line_start = old_without_minus.split("\n")[0]
-        if line_start.strip() == "": line_start = old_without_minus.split("\n")[1]
-        line_end = old_without_minus.split("\n")[-1]
-        prompt += f"Specifically,if not required by the review, your code should start with:\"{line_start}\" and end with:\"{line_end}\""
     return prompt
 
 def prompt_for_cross_file_context_request(old_without_minus: str, review: str, question: str, calls: list, name_list: list, review_info) -> str:
@@ -363,6 +354,8 @@ def prompt_for_cross_file_context_summary(review: str, question: str, calls: lis
                 prompt += f"\nCallee {i}: `{callee}`"
             else:
                 prompt += f"\nCall {i}: `{caller}` calls `{callee}`"
+            callee_text_lines = callee_text.split('\n')
+            if len(callee_text_lines) > 100: callee_text = "\n".join(callee_text_lines[:100]) + "\n #The rest of the definition is too long to display."
             prompt += f"\nCallee Implementation:\n```\n{callee_text}\n```"
             # prompt += f"\nPurpose for Checking This Callee: {callee_purpose}"
 
@@ -544,6 +537,8 @@ def prompt_for_deeper_names_of_relevance_context(review: str, question: str, cal
                 prompt += f"\nCallee {i}: `{callee}`"
             else:
                 prompt += f"\nCall {i}: `{caller}` calls `{callee}`"
+            callee_text_lines = callee_text.split('\n')
+            if len(callee_text_lines) > 100: callee_text = "\n".join(callee_text_lines[:100]) + "\n #The rest of the definition is too long to display."
             prompt += f"\nCallee Implementation:\n```\n{callee_text}\n```"
             # prompt += f"\nPurpose for Checking This Callee: {callee_purpose}"
     

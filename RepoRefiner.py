@@ -28,37 +28,22 @@ class AgentRefiner:
         if not self.languageContextGenerator: return None
         self.contextGenerator = self.languageContextGenerator.context_generator
         self.review_info = self.languageContextGenerator.comment
+        self.question_for_in_file_context, self.in_file_context_summary, self.question_for_cross_file_context, self.cross_file_context_summary = "", "", "", ""
 
-    def get_refinement_result(self, with_summary_or_code, with_precise_review_position, clipped_flag):
-        old_without_minus, record, calls, turn, review_info, in_file_context_summary, cross_file_context_summary = self.old_without_minus, self.record, self.calls, self.turn, self.review_info, self.in_file_context_summary, self.cross_file_context_summary
+    def get_refinement_result(self):
+        old_without_minus, record, turn, review_info = self.old_without_minus, self.record, self.turn, self.review_info
         # max_attempts = 3
         max_attempts = 1
         for i in range(max_attempts):
             ablation_result = {"turn": turn, "ablation_info": "", "prompt_for_refinement": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
             # in_file_context_summary = "" 
-            prompt_for_refinement = model.prompt_for_refinement(old_without_minus, record["review"], calls, review_info, with_summary_or_code, with_precise_review_position, clipped_flag, in_file_context_summary, cross_file_context_summary)
+            prompt_for_refinement = model.prompt_for_refinement(old_without_minus, record["review"], review_info, self.question_for_in_file_context, self.in_file_context_summary, self.question_for_cross_file_context, self.cross_file_context_summary)
             new_code, answer = model.get_model_response(prompt_for_refinement)
             # new_code, think, answer = model.get_full_deepseek_response(prompt_for_refinement)
             # ablation_result["think"] = think.split('\n')
             ablation_result["prompt_for_refinement"] = prompt_for_refinement.split('\n')
             if not new_code: continue
             new_code_lines = new_code.split('\n')
-
-            if clipped_flag:
-                #用于去除new_code多生成的代码补全
-                end_line = record["old"].split('\n')[-1][1:]
-                index = -1
-                for i, line in enumerate(new_code_lines):
-                    if line.strip() == end_line.strip():
-                        index = i
-                if index != -1:
-                    new_code_lines_clipped = new_code_lines[:index+1]
-                    print(f"已在new_code中截取到{end_line}")
-                else: 
-                    new_code_lines_clipped = new_code_lines
-                    print(f"没有在new_code中找到{end_line}")
-                new_code_lines = new_code_lines_clipped
-                new_code = '\n'.join(new_code_lines_clipped)
 
             # 获取稳定的结果
             em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(self.new, new_code)
@@ -67,6 +52,90 @@ class AgentRefiner:
                 ablation_result["new_code"] = new_code_lines
                 ablation_result["new_code_groud_truth"] = self.new.split('\n')
 
+        # 获取code block所在文件的源代码
+        file_path = self.contextGenerator.file_path
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                file_content = file.readlines()
+        except Exception as e:
+            print(f"Error processing patch for {file_path}: {e}")
+        pre_file_content = file_content.copy()
+        
+        try:
+            diff = self.contextGenerator.code_diff
+            diff_lines = diff.split('\n')
+            prefix_line = diff_lines[0]
+            old_diff_lines = [line for line in diff_lines[1:] if not line.startswith('+')]
+            old_diff_lines = [f"-{line[1:]}" for line in old_diff_lines]
+            new_code_lines = ablation_result["new_code"]
+            new_code_lines = [f"+{line}" for line in new_code_lines]
+            diff = '\n'.join([prefix_line] + old_diff_lines + new_code_lines)
+            
+            # 应用生成的补丁
+            start_line = None
+            line_change = 0 #补丁所在行修正
+            for line in diff.split('\n'):# 解析补丁并应用到文件
+                if line.startswith('@@'):
+                    start_line = int(line.split()[1].split(',')[0][1:]) - 2 + line_change
+                    if start_line == -2 : start_line = -1 #修正@@号初始值为0带来的影响
+                elif line.startswith('+') and start_line is not None:
+                    file_content.insert(start_line, line[1:] + '\n')
+                    line_change += 1
+                elif line.startswith('-') and start_line is not None:
+                    if start_line < len(file_content):
+                        del file_content[start_line]
+                        line_change -= 1
+                        start_line -= 1
+                    else:
+                        print(f"Warning: Trying to delete line {start_line} which is out of range in {file_path}")
+                start_line += 1
+            with open(file_path, 'w', encoding='utf-8') as file:
+                file.writelines(file_content)
+
+            # 提取new_added_identifiers
+            _languageContextGenerator = LanguageContextGenerator(record)
+            contextGenerator = _languageContextGenerator.get_context_generator_after_applying_diff()
+            definitions_after_patch = contextGenerator.node_list
+            predict_new_identifiers = [def_aft.text.decode('utf-8') for def_aft in definitions_after_patch]
+            predict_new_identifiers = list(set(predict_new_identifiers))
+            ablation_result["predict_new_identifiers"] = predict_new_identifiers
+            ablation_result["ground_truth_identifiers"] = self.record["new_identifiers"]
+            ablation_result["generated_patch"] = diff.split('\n')
+            ground_truth_identifiers = self.record["new_identifiers"]
+            recall = len(set(predict_new_identifiers) & set(ground_truth_identifiers)) / len(ground_truth_identifiers) if len(ground_truth_identifiers) > 0 else 0
+            precision = len(set(predict_new_identifiers) & set(ground_truth_identifiers)) / len(predict_new_identifiers) if len(predict_new_identifiers) > 0 else 0
+            f1_score = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
+            ablation_result["Identifie_Match"] = {
+                "recall": recall,
+                "precision": precision,
+                "f1_score": f1_score
+            }
+            old_identifies = self.record["old_identifiers"]
+            predict_new_added_identifiers = list(set(predict_new_identifiers) - set(old_identifies))
+            ablation_result["predict_new_added_identifiers"] = predict_new_added_identifiers
+            ablation_result["ground_truth_added_identifiers"] = self.record["new_added_identifiers"]
+            ground_truth_added_identifiers = self.record["new_added_identifiers"]
+            recall = len(set(predict_new_added_identifiers) & set(ground_truth_added_identifiers)) / len(ground_truth_added_identifiers) if len(ground_truth_added_identifiers) > 0 else 0
+            precision = len(set(predict_new_added_identifiers) & set(ground_truth_added_identifiers)) / len(predict_new_added_identifiers) if len(predict_new_added_identifiers) > 0 else 0
+            f1_score = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
+            ablation_result["Added_Identifie_Match"] = {
+                "recall": recall,
+                "precision": precision,
+                "f1_score": f1_score
+            }
+            with open(file_path, 'w', encoding='utf-8') as file:
+                file.writelines(pre_file_content)
+        except Exception as e:
+            print(f"Error processing generated code for {self.id}: {e}")
+            traceback.print_exc()
+            ablation_result["Identifie_Match"] = {
+                "recall": 0,
+                "precision": 0,
+                "f1_score": 0
+            }
+            with open(file_path, 'w', encoding='utf-8') as file:
+                file.writelines(pre_file_content)
+        
         return ablation_result
 
     def get_json_value_number(self, str, key):
@@ -92,25 +161,21 @@ class AgentRefiner:
         except:
             return []
 
-
     def process(self):
         # ReAct框架
         turn, flag_for_context_change, contextGenerator, old_without_minus, record, review_info = self.turn, self.flag_for_context_change, self.contextGenerator, self.old_without_minus, self.record, self.review_info
         self.calls = [] #元组格式，（调用的函数，被调用的函数，被调用函数的实现）
         results = [] #存储每一个turn的结果
-        name = "" #存储要检索的函数名
         self.definitions = contextGenerator.getContext() #存储所有上下文定义
-        self.in_file_context_summary = ""
-        self.cross_file_context_summary = ""
         record["call_name_list"] = []
-        record["Evaluation_results"] = {
+        record["Evaluation_Results"] = {
             "Recall@Context": 0,
             "Precision@Context": 0,
             "F1@Context": 0,
         }
 
         #先运行一次refinement作为turn0的结果
-        results.append({"turn": 0, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [self.get_refinement_result("summary", True, False)]})
+        results.append({"turn": 0, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [self.get_refinement_result()]})
 
         #1. Instruction 阶段
         #判断是否需要额外的上下文信息，包括In-file context和Cross-file context
@@ -164,6 +229,7 @@ class AgentRefiner:
                 if in_file_context_summary_useful == "1":
                 # if question_resolved == "1":
                     self.in_file_context_summary = in_file_context_summary
+                    self.question_for_in_file_context = question_for_in_file_context
                     break
                 else:
                     if new_question: question_for_in_file_context = new_question
@@ -171,7 +237,7 @@ class AgentRefiner:
         #再运行一次refinement作为turn1的结果,此结果中已包含In-file context
         turn = 1
         self.turn = turn
-        results.append({"turn": 1, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [self.get_refinement_result("summary", True, False)]})
+        results.append({"turn": 1, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [self.get_refinement_result()]})
 
         #1.2 处理Cross-file context
         # if cross_file_context_required == "1":
@@ -179,16 +245,19 @@ class AgentRefiner:
             def action(context_name_list):
                 #1.2.2 Action 阶段 找到每个候选函数的定义
                 for context_name in context_name_list:
-                    definition_of_context_name = next((definition for definition in self.definitions if definition['name'] == name), None)
-                    if not definition_of_context_name:
-                        #扩大搜索范围
-                        self.definitions = contextGenerator.search_definition(context_name)
-                        definition_of_context_name = next((definition for definition in self.definitions if definition['name'] == name), None)
-                        if not definition_of_context_name:
-                            print(f"Unable to find the definition of the context name: {context_name}")
-                            continue
+                    definition_of_context_name = next((definition for definition in self.definitions if definition['name'] == context_name), None)
+                    if definition_of_context_name:
                         self.calls.append((definition_of_context_name['caller'], context_name, definition_of_context_name['text'], "<definition_of_context_name['context']>" , "question_for_element"))
+                        continue
+                    #扩大搜索范围
+                    self.definitions = contextGenerator.search_definition(context_name)
+                    definition_of_context_name = next((definition for definition in self.definitions if definition['name'] == context_name), None)
+                    if definition_of_context_name:
+                        self.calls.append((definition_of_context_name['caller'], context_name, definition_of_context_name['text'], "<definition_of_context_name['context']>" , "question_for_element"))
+                        continue
+                    print(f"Unable to find the definition of the context name: {context_name}")
 
+            result = {"turn": 2}
             #1.2.1 在code block所在文件中列出10个待查找的函数名候选
             record["names_of_relevance_context"] = []
             prompt_for_names_of_relevance_context = model.prompt_for_names_of_relevance_context(record["review"], self.in_file_context, question_for_cross_file_context, review_info)
@@ -251,12 +320,13 @@ class AgentRefiner:
                     if cross_file_context_summary_useful == "1":
                     # if question_resolved == "1":
                         self.cross_file_context_summary = cross_file_context_summary
+                        self.question_for_cross_file_context = question_for_cross_file_context
                         break
                     else:
                         if new_question: question_for_cross_file_context = new_question        
                 #1.2.4：Refinement Stage
-                refine_result = self.get_refinement_result("summary", True, False)
-                result = [refine_result]
+                refine_result = self.get_refinement_result()
+                result["ablation_results"] = [refine_result]
                 results.append(result)      
         record["definitions"], record["results"] = "omitted", results
         #计算指标
@@ -295,14 +365,18 @@ def process_repo_group(config, repo, records):
 def main():
     config = {
         "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered.json',
-        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_results/result_for_datasets_human_filtered_first100.json',
+        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_results/result_for_datasets_human_filtered.json',
         # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
     }
 
-    # # 继续处理未完成的记录
-    # with open(config["output_path"], "r", encoding="utf-8") as f0:
-    #     _records = [json.loads(line) for line in f0]
-        # ids = [record["_id"] for record in _records]
+    # 继续处理未完成的记录
+    try:
+        with open(config["output_path"], "r", encoding="utf-8") as f0:
+            _records = [json.loads(line) for line in f0]
+            ids = [record["_id"] for record in _records]
+    except FileNotFoundError:
+        _records = []
+        ids = []
 
     # 被占用的repos
     occupied_repos = ['modin-project/modin']
@@ -312,14 +386,14 @@ def main():
         records = [json.loads(line) for line in f]
         # records = json.load(f)
         records = [record for record in records if record["repo"] not in occupied_repos]
-        records = records[:10]
-        # records = [record for record in records if record["_id"] not in ids]
+        # records = records[:10]
+        records = [record for record in records if record["_id"] not in ids]
         # records = records[:3000]
         print(f"待处理记录数: {len(records)}")
 
     # # 测试单个记录
     # # config["output_path"] = '/mnt/ssd2/wangke/dataset/AgentRefiner/tmp_result.json'
-    # record = [record for record in records if record["_id"] == 115]
+    # record = [record for record in records if record["_id"] == 1804]
     # # record = [records[0]]
     # process_repo_group(config, record[0]["repo"], record)
     # return

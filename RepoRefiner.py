@@ -364,8 +364,8 @@ def process_repo_group(config, repo, records):
 
 def main():
     config = {
-        "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered.json',
-        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_results/result_for_datasets_human_filtered.json',
+        "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_repo_datasets_filtered_restrict.json',
+        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_results/result_for_datasets_restrict.json',
         # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
     }
 
@@ -393,7 +393,7 @@ def main():
 
     # # 测试单个记录
     # # config["output_path"] = '/mnt/ssd2/wangke/dataset/AgentRefiner/tmp_result.json'
-    # record = [record for record in records if record["_id"] == 1804]
+    # record = [record for record in records if record["_id"] == 4760]
     # # record = [records[0]]
     # process_repo_group(config, record[0]["repo"], record)
     # return

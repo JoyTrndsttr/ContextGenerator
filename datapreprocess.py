@@ -5,9 +5,9 @@ from getProjectCommitState import CLBPP, get_commit_details
 import re
 import traceback
 config = {
-    "dataset_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_second4w.json",
-    "output_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_filtered_5.json",
-    "log_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/log4.json"
+    "dataset_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_2.json",
+    "output_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/preprocessed_datasets.json",
+    "log_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/log5.json"
 }
 
 def get_json_value_number(str, key):
@@ -128,7 +128,7 @@ def filtered_by_huristics_approaches(record):
     if record["review"].find("```") != -1: raise Exception("Review contains code block")
     if record["review"].find("suggestion") != -1: raise Exception("Review contains suggestion")
     if not review_line_exist_in_old(record["old"].split('\n'), record["comment"]["review_position_line"]) : raise Exception("Review position line not in old code")
-    if not (record["new_added_identifiers_review_strict"] and record["new_added_identifiers_definition_strict"]): raise Exception("No new strictly added identifiers")
+    if not ((record["new_added_identifiers_review_strict"] or record["new_added_identifiers_definition_strict"])): raise Exception("No new strictly added identifiers")
     return record
 
 with open(config['log_path'], 'r') as f00:
@@ -137,6 +137,7 @@ with open(config['log_path'], 'r') as f00:
 with open(config['output_path'], 'a') as f0:
     with open(config['dataset_path'], 'r') as f:
         records = [json.loads(line) for line in f]
+        records = records[:100000]
         # records = records[18193:]
         # records = [records[10]]
         # records = json.load(f)

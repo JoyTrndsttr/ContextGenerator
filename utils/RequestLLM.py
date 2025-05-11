@@ -60,3 +60,12 @@ class RequestLLM:
             print("No code found in response 3")
             print(prompt)
             return None, None, None
+
+def main():
+    prompt = "法国的首都是哪里"
+    llm = RequestLLM()
+    code, think, output = llm.request_deepseek(prompt)
+    print(output)
+
+if __name__ == '__main__':
+    main()

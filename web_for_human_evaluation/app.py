@@ -5,8 +5,10 @@ import re
 import copy
 
 # 文件路径
-data_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_filtered_5.json"
-output_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered.json"
+# data_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_filtered_5.json"
+# output_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered.json"
+data_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/preprocessed_datasets.json"
+output_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered_2.json"
 
 # 读取数据
 with open(data_file, "r", encoding="utf-8") as f:
@@ -70,8 +72,6 @@ def show_record():
     diff_hunk = "\n".join(record["diff_hunk"])
     review_position_line = record["comment"].get("review_position_line", "未知")
     
-    suggested_review = record["dataset_valid_or_discard_estimation"].get("new_review", "")
-    
     if not review_line_exist_in_old(record["old"], review_position_line):
         reject_record()
 
@@ -83,20 +83,14 @@ def show_record():
     # 显示进度
     progress = f"{index + 1} / {len(records_to_review)} 已处理： {len(passed_records)}"
 
-    return progress, review, diff_hunk, review_position_line, record_content, suggested_review
+    return progress, review, diff_hunk, review_position_line, record_content
 
-def pass_record(final_review):
+def pass_record():
     global index
     if index >= len(records_to_review):
         return "✅ 所有记录已评估完毕。", f"{len(passed_records)} / {len(records_to_review)}", "", "", "", "", ""
     
     record = records_to_review[index]
-
-    # 保存原始 review 到 original_review 字段
-    record["original_review"] = record.get("original_review", record["review"])
-    
-    # 更新 review 为最终选择的内容
-    record["review"] = final_review
     
     # old, new = split_diff(record["diff_hunk"])
     # record["old"] = '\n'.join(old)
@@ -122,13 +116,7 @@ with gr.Blocks() as demo:
     # 创建布局
     with gr.Column():
         progress_display = gr.Textbox(label="进度", interactive=False, lines=1)
-        review_display = gr.Textbox(label="Original Review", interactive=False, lines=3)
-        
-        # 新增 Suggested Review 编辑框
-        suggested_review_display = gr.Textbox(label="Suggested Review", interactive=True, lines=3)
-        
-        # 用来选择 Original 或 Suggested
-        review_choice = gr.Radio(["Original", "Suggested"], label="选择 Review", value="Suggested", interactive=True)
+        review_display = gr.Textbox(label="Review", interactive=False, lines=3)
         
         diff_display = gr.Textbox(label="Code Diff", interactive=False, lines=5)
         review_position_display = gr.Textbox(label="评论位置", interactive=False, lines=2)
@@ -140,21 +128,11 @@ with gr.Blocks() as demo:
 
         record_display = gr.Code(label="当前记录内容", language="json", lines=20)
 
-    # 绑定按钮事件
-    def update_suggested_review(review_choice):
-        # 如果选择 Original，更新 Suggested Review 显示为原始的 review 内容，否则显示 suggested 的内容
-        record = records_to_review[index]
-        if review_choice == "Original":
-            return record.get("review", "无")
-        else:
-            return record["dataset_valid_or_discard_estimation"].get("new_review", "")
-
-    review_choice.change(update_suggested_review, inputs=review_choice, outputs=suggested_review_display)
     
-    btn_pass.click(pass_record, inputs=[suggested_review_display], outputs=[progress_display, review_display, diff_display, review_position_display, record_display, suggested_review_display])
-    btn_reject.click(reject_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_display, suggested_review_display])
+    btn_pass.click(pass_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_display])
+    btn_reject.click(reject_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_display])
 
     # 初始化内容
-    demo.load(show_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_display, suggested_review_display])
+    demo.load(show_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_display,])
 
 demo.launch(server_name="0.0.0.0", server_port=7860)

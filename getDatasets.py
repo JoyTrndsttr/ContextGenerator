@@ -139,7 +139,7 @@ def get_pulls(repo, token):
                                 hunk = []
                                 for line in patch.split('\n'):
                                     if line.startswith("@@"):
-                                        if hunk: hunks.append(''.join(hunk))
+                                        if hunk: hunks.append('\n'.join(hunk))
                                         hunk = []
                                     hunk.append(line)
                                 if hunk: hunks.append('\n'.join(hunk))

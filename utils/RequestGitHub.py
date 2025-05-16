@@ -64,10 +64,60 @@ class RequestGitHub:
                     return response
                 except Exception as e:
                     print(f"Error getting {url}: {e}")
-                    traceback.print_exc()
+                    if e.response.status_code == 403: continue
+                    else: 
+                        traceback.print_exc()
+                        raise Exception(f"{e.response.status_code}")
             time.sleep(600)
-        raise Exception(f"Failed to get {url} after 3 retries")
+        raise Exception(f"url forbidden after 6 retries")
     
+    #用于response.json()返回的是一个list，但是分成多页的情况
+    def get_response_and_merge_list_pages_aware(self, url):
+        results = []
+        for page in range(1, 100):
+            for j in range(6):
+                flag = False
+                for i in range(len(self.valid_github_tokens)):
+                    try:
+                        headers = {'Authorization': f'token {self.next_github_token()}'}
+                        response = self.requests_retry_session().get(f"{url}?page={page}", headers=headers, timeout=10)
+                        response.raise_for_status()
+                        if response:
+                            for item in response.json():
+                                results.append(item)
+                            flag = True
+                            break
+                        else:
+                            flag = True
+                            break
+                    except Exception as e:
+                        print(f"Error getting {url}: {e}")
+                        if e.response.status_code == 403: continue
+                        else: 
+                            traceback.print_exc()
+                            raise Exception(f"{e.response.status_code}")
+                time.sleep(600)
+            raise Exception(f"url forbidden after 6 retries")
+        return results
+    
+    #用于response.json()返回的是一个list，但是一页一页查询
+    def get_response_by_page(self, url, page):
+        for j in range(6):
+            for i in range(len(self.valid_github_tokens)):
+                try:
+                    headers = {'Authorization': f'token {self.next_github_token()}'}
+                    response = self.requests_retry_session().get(f"{url}?page={page}", headers=headers, timeout=10)
+                    response.raise_for_status()
+                    return response
+                except Exception as e:
+                    print(f"Error getting {url}: {e}")
+                    if e.response.status_code == 403: continue
+                    else: 
+                        traceback.print_exc()
+                        raise Exception(f"{e.response.status_code}")
+            time.sleep(600)
+        raise Exception(f"url forbidden after 6 retries")
+
     def get_full_content(self, url):
         result = []
         response = self.get_response(url)

@@ -110,6 +110,12 @@ def reject_record():
     index += 1
     return show_record()
 
+def rollback_record():
+    global index
+    if index > 0:
+        index -= 1
+    return show_record()
+
 with gr.Blocks() as demo:
     gr.Markdown("# 👁️ 人工数据筛选界面")
     
@@ -125,12 +131,14 @@ with gr.Blocks() as demo:
         with gr.Row():
             btn_pass = gr.Button("✅ 通过")
             btn_reject = gr.Button("❌ 不通过")
+            btn_rollback = gr.Button("⏪ 回退")
 
         record_display = gr.Code(label="当前记录内容", language="json", lines=20)
 
     
     btn_pass.click(pass_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_display])
     btn_reject.click(reject_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_display])
+    btn_rollback.click(rollback_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_display])
 
     # 初始化内容
     demo.load(show_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_display,])

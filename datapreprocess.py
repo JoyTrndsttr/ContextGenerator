@@ -7,7 +7,7 @@ import traceback
 config = {
     "dataset_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_2.json",
     "output_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/preprocessed_datasets.json",
-    "log_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/log5.json"
+    "log_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/log6.json"
 }
 
 def get_json_value_number(str, key):
@@ -137,7 +137,7 @@ with open(config['log_path'], 'r') as f00:
 with open(config['output_path'], 'a') as f0:
     with open(config['dataset_path'], 'r') as f:
         records = [json.loads(line) for line in f]
-        records = records[:100000]
+        records = records[64793:]
         # records = records[18193:]
         # records = [records[10]]
         # records = json.load(f)
@@ -145,7 +145,7 @@ with open(config['output_path'], 'a') as f0:
         # records = [record for record in records if record["review"]=="Can you share some evidence that this change is able to send metrics?\r\nMetrics are not fully covered in automated testing, so running this [unit test locally](https://github.com/google/clusterfuzz/blob/412b2e16153e29a0f2ce0ddf4cb4333af280e399/src/clusterfuzz/_internal/tests/core/metrics/monitor_test.py#L161) will ensure metrics are still making it to GCP\r\n\r\nThank you for the improvements"]
         if not count:
             count = {
-                "Total": len(records),
+                "Total": 0,
                 "Successful_processed": 0,
                 "No_new_identifier_found": 0,
                 "Low_quality_sample": 0,

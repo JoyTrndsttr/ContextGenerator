@@ -7,16 +7,7 @@ from utils.RequestLLM import RequestLLM
 import re
 import logging
 
-generation_kwargs = {
-    "max_tokens": 1000,
-    "temperature": 0,
-    "top_p": 0.95,
-    "n": 1,
-    "presence_penalty": 0.0,
-    "frequency_penalty": 0.0
-}
-
-model = OpenAIUtils(model_id="llama:7b", generation_kwargs=generation_kwargs)
+model = OpenAIUtils(model_id="llama:7b")
 logging.basicConfig(filename='log.txt', level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s', filemode='w')
 deepseek_model = RequestLLM()
@@ -437,20 +428,20 @@ def prompt_for_evaluating_summary(old_without_minus: str, review: str, question:
 
     return prompt
 
-def get_model_response(prompt, temperature=0):
-    answer = model.get_completion([prompt])
+def get_model_response(user_prompt, system_prompt = None):
+    answer = model.get_completion(user_prompt, system_prompt if system_prompt else None)
     result = re.search(r'```(.*)```', answer,re.DOTALL)
-    print(f"prompt:\n{prompt}\nanswer:\n{answer}")
-    if result: # TODO 由于模型可能会受到提示词的干扰，应该选表现最好的newcode
+    print(f"prompt:\n{user_prompt}\nanswer:\n{answer}")
+    if result:
         newcode = result.group(1)
     return newcode if result else "", answer
 
-def get_deepseek_response(prompt):
-    code, _, answer = deepseek_model.request_deepseek(prompt)
+def get_deepseek_response(user_prompt, system_prompt = None):
+    code, _, answer = deepseek_model.request_deepseek(user_prompt, system_prompt if system_prompt else None)
     return code, answer
 
-def get_full_deepseek_response(prompt):
-    code, think, answer = deepseek_model.request_deepseek(prompt)
+def get_full_deepseek_response(user_prompt, system_prompt = None):
+    code, think, answer = deepseek_model.request_deepseek(user_prompt, system_prompt if system_prompt else None)
     return code, think, answer
 
 def calc_em_and_bleu(new, new_code):
@@ -563,3 +554,56 @@ def prompt_for_deeper_names_of_relevance_context(review: str, question: str, cal
     prompt += "\n```"
 
     return prompt
+
+def get_intention(data):
+    system_prompt = "You will be presented with a code review comment and a code snippet. "
+    system_prompt += "Your task is to understand the reviewer's intention of the modification without explaining the reason. "
+    system_prompt += "Choose one of the following templates to describe the reviewer's intention. "
+    system_prompt += "Do not change the original words in the template; "
+    system_prompt += "fill in the words in parentheses and fill in the code inside the code block according to the context.\n"
+    system_prompt += "Single-line change. Change word (old_word) to (new_word)\n"
+    system_prompt += "Single-line change. Delete word (word_to_delete)\n"
+    system_prompt += "Single-line change. Change the code to ```new_code```\n"
+    system_prompt += "Single-line change. Delete code ```code_to_delete```\n"
+    system_prompt += "Multi-line change. Delete code lines ```code_lines_to_delete```\n"
+    system_prompt += "Multi-line change. Change the code lines ```old_code_lines``` to ```new_code_lines```\n"
+    # print("system_prompt:", system_prompt)
+    # input("press enter to continue")
+
+    comment = data["comment"]
+    review_line = data["review_line"]
+    old_code = data["old_code"]
+    prompt = ""
+    prompt += "The reviewer gave the following comment:\n"
+    prompt += "{}\n".format(comment)
+    prompt += "The original code is as follows:\n"
+    prompt += "```\n{}\n```\n".format(old_code)
+    prompt += "The review comment is related to the following code line:\n"
+    prompt += "{}\n".format(review_line)
+    # reviewer's intention 是什么
+    prompt += "What is the reviewer's intention of the modification?\n"
+    return system_prompt, prompt
+
+def get_selfgen_prompt(data):
+    intention = data["intention"]
+    old_code = data["old_code"]
+    review_line = data["review_line"]
+    prompt = ""
+    prompt += "During a code review, the reviewer asked the developer to revise this piece of code, the original code is as follows:\n"
+    prompt += "```\n{}\n```\n".format(old_code)
+    prompt += "The review comment is related to the following code line:\n"
+    prompt += "{}\n".format(review_line)
+    prompt += "The reviewer's intention is:\n{}\n".format(intention)
+    prompt += "Revise the original code according to the reviewer's intention.\n"
+    prompt += "# Instruction:\n"
+    prompt += "## Recall relevant exemplars:\n"
+    # 提供三个code review的例子。根据<Origianl Code>, <Review Intention>, <Intention Related Line>，分析得到<Revised Code>
+    prompt += "  provide three code review examples. According to <Origianl Code>, <Review Intention> and <Intention Related Line> analyze and get <Revised Code>.\n"
+    prompt += "## Solve the initial problem:\n"
+    # 先复述一下initial problem，然后根据例子，分析得到<Revised Code>
+    prompt += "  Repeat the initial problem, then analyze and get <Revised Code> according to the examples.\n"
+    # 一步一步的解决问题
+    prompt += "Please solve the problem step by step.\n"
+    return prompt
+
+    

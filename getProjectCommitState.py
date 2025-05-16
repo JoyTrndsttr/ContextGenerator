@@ -62,9 +62,10 @@ def get_comment_info(record):
             try:
                 comment_info["review_hunk_start_line"] = diff_hunk_lines[_comment["original_start_line"]-start+1][1:] #加1是因为第一行是code_diff_hunk的prefix
                 if comment_info["review_hunk_start_line"] not in old_lines:
-                    raise Exception(f"Error finding start position of comment in old code: {comment_info['review_hunk_start_line']} not in {old_lines}")
+                    print(f"Error finding start position of comment in old code: id:{record['_id']}")
+                    raise Exception(f"Error finding start position of comment in old code")
             except Exception as e:
-                print(f"{e}")
+                print(f"{e}, id:{record['_id']}")
                 comment_info["original_start_line"] = None
                 comment_info["review_hunk_start_line"] = None
         # diff_hunk字段的最后一行一般就是review指向的行，然而在GitHub的结构中，review通常绑定到PR的当前状态而不是单独的commit，因此review_position_line可能指向错误的行，甚至是已经被删除的行/review之后新增的行
@@ -79,10 +80,98 @@ def get_comment_info(record):
         #         break
         comment_info['review_position_line'] = diff_hunk_lines[-1][1:]
         if comment_info['review_position_line'] not in old_lines:
-            raise Exception(f"Error finding start position of comment in old code: {comment_info['review_position_line']} not in {old_lines}")
+            print(f"Error finding position of comment in old code: id:{record['_id']}")
+            raise Exception(f"Error finding position of comment in old code")
         return comment_info, _comment['url']
     else:
         return None, review_url
+
+# 检查CR/CRN数据
+def check_CR_CRN_data(record):
+    def normalize_text(text):
+        text = re.sub(r'\W+','', text)
+        return text
+    def check_parents_commit(repo, commit_sha, original_commit_sha, original_commit_time):
+        url = f"https://api.github.com/repos/{repo}/commits/{commit_sha}"
+        commit = requestGitHub.get_response(url).json()
+        if commit_sha == original_commit_sha: return True
+        elif commit['commit']['committer']['date'] < original_commit_time:
+            return False
+        else:
+            parents = commit["parents"]
+            for parent in parents: return check_parents_commit(repo, parent["sha"], original_commit_sha, original_commit_time)
+            return False
+    
+    repo, review, commit_url = record["repo"],record["review"],record["commit_url"]
+    commit_hash = commit_url.split('/')[-1]
+    if record.get("review_url", None): review_url = record["review_url"]
+    else:
+        pull = commit_url.split('pull/')[1].split('/')[0]
+        full_review_url = f"https://api.github.com/repos/{repo}/pulls/{pull}/comments"
+        _comment = None
+        for page in range(1, 100):
+            flag = False
+            comments = requestGitHub.get_response_by_page(full_review_url, page).json()
+            if not comments: break
+            for comment in comments:
+                if normalize_text(comment['body']) == normalize_text(review):
+                    _comment = comment
+                    flag = True
+                    break
+            if flag: break
+        if not _comment:
+            print(f"Failed to find review, id:{record['_id']}")
+            raise Exception(f"Wrong linking")
+        review_url = _comment['url']
+        diff_hunk_lines = _comment["diff_hunk"].split('\n')
+        review_position_line = diff_hunk_lines[-1][1:]
+        old_lines = [line[1:] for line in record["old"].split('\n')]
+        if review_position_line not in old_lines:
+            print(f"Error finding position of comment in old code: id:{record['_id']}")
+            raise Exception(f"Error finding position of comment in old code")
+
+    comment_info = get_comment(review_url)
+    original_commit_hash = comment_info["original_commit_id"]
+    commit_info = get_commit_info(repo, commit_hash)
+    original_commit = f"https://api.github.com/repos/{repo}/commits/{original_commit_hash}"
+    original_commit_info = requestGitHub.get_response(original_commit).json()
+    if not check_parents_commit(repo, commit_info['sha'], original_commit_info["sha"], original_commit_info['commit']['committer']['date']):
+        raise Exception(f"Failed_processed")
+    old_lines = [line[1:].strip() for line in record["old"].split('\n')]
+    new_lines = [line[1:].strip() for line in record["new"].split('\n')]
+    lines = old_lines + new_lines
+    path = comment_info['path']
+    files = commit_info.get('files', [])
+    match_flag = False
+    for file in files:
+        hunks = []
+        if file['filename'] == path:
+            patch = file.get('patch', '')
+            if not patch:
+                print(f"Can not find file path in CRA, id:{record['_id']}")
+                raise Exception(f"Diff hunk not found")
+            hunk = []
+            for line in patch.split('\n'):
+                if line.startswith("@@"):
+                    if hunk: hunks.append('\n'.join(hunk))
+                    hunk = []
+                hunk.append(line)
+            if hunk: hunks.append('\n'.join(hunk))
+            if not hunks: continue
+            for hunk in hunks:
+                hunk_lines = hunk.split('\n')
+                hunk_lines = [line[1:].strip() for line in hunk_lines]   
+                #如果lines的每一行都在hunk中，则匹配成功
+                if all(line in hunk_lines for line in lines):
+                    match_flag = True
+            if match_flag: break
+            else: 
+                print(f"Diff hunk not found, id:{record['_id']}")
+                raise Exception(f"Diff hunk not found")
+    if not match_flag: 
+        print(f"Can not find file path in CRA, id:{record['_id']}")
+        raise Exception(f"Can not find file path in CRA")
+    return True
 
 def get_comment(review_url):
     return requestGitHub.get_response(review_url).json()

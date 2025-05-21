@@ -283,6 +283,12 @@ class AgentRefiner:
                         self.calls.append((definition_of_context_name['caller'], context_name, definition_of_context_name['text'], "<definition_of_context_name['context']>" , "question_for_element"))
                         continue
                     print(f"Unable to find the definition of the context name: {context_name}")
+            
+            def evaluate_context(call_name_list, new_added_identifiers):
+                recall = len(set(call_name_list) & set(new_added_identifiers)) / len(new_added_identifiers)
+                precision = len(set(call_name_list) & set(new_added_identifiers)) / len(call_name_list)
+                f1_score = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
+                return {"recall": recall, "precision": precision, "f1_score": f1_score}
 
             self.turn = turn = 4
             result = {"turn": 4}
@@ -294,7 +300,9 @@ class AgentRefiner:
             purpose_for_names_of_relevance_context = self.get_json_value_string(names_of_relevance_context_result_json, "Purpose")
             if not context_name_list: raise Exception("No candidate context names found")
             record["names_of_relevance_context"].append({
+                "layer": 1,
                 "names_of_relevance_context" : context_name_list,
+                "evaluation_results": evaluate_context(context_name_list, self.record["new_added_identifiers"]),
                 "purpose_for_names_of_relevance_context": purpose_for_names_of_relevance_context,
                 "names_of_relevance_context_result_json": names_of_relevance_context_result_json.split('\n'),
                 "think_for_names_of_relevance_context": think_for_names_of_relevance_context.split('\n'),
@@ -311,14 +319,16 @@ class AgentRefiner:
                 deeper_context_name_list = list(set(deeper_context_name_list) - set(self.call_name_list))
                 purpose_for_deeper_names_of_relevance_context = self.get_json_value_string(deeper_names_of_relevance_context_result_json, "Purpose")
                 if not deeper_context_name_list: break
+                self.call_name_list = self.call_name_list + deeper_context_name_list
                 record["names_of_relevance_context"].append({
+                    "layer": i+2,
                     "names_of_relevance_context" : deeper_context_name_list,
+                    "evaluation_results": evaluate_context(self.call_name_list, self.record["new_added_identifiers"]),
                     "purpose_for_deeper_names_of_relevance_context": purpose_for_deeper_names_of_relevance_context,
                     "names_of_relevance_context_result_json": deeper_names_of_relevance_context_result_json.split('\n'),
                     "think_for_names_of_relevance_context": think_for_deeper_names_of_relevance_context.split('\n'),
                     "prompt_for_names_of_relevance_context": prompt_for_deeper_names_of_relevance_context.split('\n')
                 })
-                self.call_name_list = self.call_name_list + deeper_context_name_list
                 action(deeper_context_name_list)
             record["call_name_list"] = self.call_name_list
             #1.2.3 Summary Cross-file context
@@ -378,8 +388,8 @@ def process_repo_group(config, repo, records):
             try:
                 agent = AgentRefiner(config, record)
                 record = agent.process()
-                with open(output_file, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(record) + "\n")
+                # with open(output_file, "a", encoding="utf-8") as f:
+                #     f.write(json.dumps(record) + "\n")
             except Exception as e:
                 print(f'Error processing ID {id}: {e}')
                 traceback.print_exc()
@@ -391,8 +401,9 @@ def process_repo_group(config, repo, records):
 
 def main():
     config = {
-        "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/current_datasets_human_filtered.json',
-        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_results/result_for_preprocessed_datasets_4.json',
+        # "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/strict_filtered_datasets.json',
+        "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/final_datasets_human_filtered.json',
+        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_results/result_for_preprocessed_datasets_6.json',
         # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
     }
 
@@ -412,20 +423,20 @@ def main():
     with open(config["dataset_path"], "r", encoding="utf-8") as f:
         records = [json.loads(line) for line in f]
         # records = json.load(f)
-        records = [record for record in records if record["repo"] not in occupied_repos]
+        # records = [record for record in records if record["repo"] not in occupied_repos]
         # records = records[:10]
-        records = [record for record in records if record["_id"] not in ids]
+        # records = [record for record in records if record["_id"] not in ids]
         # records = records[:3000]
         # fileterd by model
         records = [record for record in records if record["dataset_valid_or_discard_estimation"]["Classification"] == "Valid"]
         print(f"待处理记录数: {len(records)}")
 
-    # # 测试单个记录
-    # # config["output_path"] = '/mnt/ssd2/wangke/dataset/AgentRefiner/tmp_result.json'
-    # record = [record for record in _records if record["_id"] == 3158]
-    # # record = [records[0]]
-    # process_repo_group(config, record[0]["repo"], record)
-    # return
+    # 测试单个记录
+    # config["output_path"] = '/mnt/ssd2/wangke/dataset/AgentRefiner/tmp_result.json'
+    record = [record for record in records if record["_id"] == 6]
+    # record = [records[0]]
+    process_repo_group(config, record[0]["repo"], record)
+    return
 
     # 按repo分组（确保同repo顺序处理）
     repo_map = defaultdict(list)

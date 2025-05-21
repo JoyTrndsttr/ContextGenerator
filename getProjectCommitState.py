@@ -290,7 +290,7 @@ def CLBPP(record):
     record_id, repo, commit_url, review = record["_id"], record["repo"], record["commit_url"], record["review"]
     repo_path = f"/mnt/ssd2/wangke/CR_data/repo/{repo.split('/')[1]}"
     commit_hash = commit_url.split('/')[-1]
-    comment_info, review_url = get_comment_info(record)
+    # comment_info, review_url = get_comment_info(record)
     
     #获取commit_hash的parents_commit_hash，将项目回溯到parents_commit_hash的状态
     parents_commit_hash = get_commit_info(repo, commit_hash).get('parents', [])[0]['sha']
@@ -305,10 +305,10 @@ def CLBPP(record):
                 except PermissionError:
                     print(f"Error,failed to apply patch for {file_info['filename']} commit_info:{commit_info['sha']}")
         paths_str, code_diff_str = get_commit_details(repo, commit_url)
-        record['review_url'] = review_url
+        # record['review_url'] = review_url
         record['path'] = paths_str
         record['code_diff'] = code_diff_str
-        record['comment'] = comment_info
+        # record['comment'] = comment_info
         print(f"Successfully processed record {record_id}")
         return record
     else:

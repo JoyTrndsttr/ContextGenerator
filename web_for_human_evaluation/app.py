@@ -8,7 +8,7 @@ import copy
 # data_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_filtered_5.json"
 # output_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered.json"
 data_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/preprocessed_datasets.json"
-output_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered_2.json"
+output_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered_3.json"
 
 # 读取数据
 with open(data_file, "r", encoding="utf-8") as f:
@@ -81,7 +81,7 @@ def show_record():
     record_content = json.dumps(record, ensure_ascii=False, indent=2)
     
     # 显示进度
-    progress = f"{index + 1} / {len(records_to_review)} 已处理： {len(passed_records)}"
+    progress = f"{index + 1} / {len(records_to_review)} Processed: {len(passed_records)}"
 
     return progress, review, diff_hunk, review_position_line, record_content
 
@@ -117,23 +117,23 @@ def rollback_record():
     return show_record()
 
 with gr.Blocks() as demo:
-    gr.Markdown("# 👁️ 人工数据筛选界面")
-    
+    gr.HTML("<h1 style='text-align: center;'>Human Evaluation Web Site</h1>")
+
     # 创建布局
     with gr.Column():
-        progress_display = gr.Textbox(label="进度", interactive=False, lines=1)
+        progress_display = gr.Textbox(label="Progress", interactive=False, lines=1)
         review_display = gr.Textbox(label="Review", interactive=False, lines=3)
         
         diff_display = gr.Textbox(label="Code Diff", interactive=False, lines=5)
-        review_position_display = gr.Textbox(label="评论位置", interactive=False, lines=2)
+        review_position_display = gr.Textbox(label="Review Position", interactive=False, lines=2)
 
         # 按钮
         with gr.Row():
-            btn_pass = gr.Button("✅ 通过")
-            btn_reject = gr.Button("❌ 不通过")
-            btn_rollback = gr.Button("⏪ 回退")
+            btn_pass = gr.Button("✅ Pass")
+            btn_reject = gr.Button("❌ Reject")
+            btn_rollback = gr.Button("⏪ Rollback")
 
-        record_display = gr.Code(label="当前记录内容", language="json", lines=20)
+        record_display = gr.Code(label="Current Record", language="json", lines=20)
 
     
     btn_pass.click(pass_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_display])

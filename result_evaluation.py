@@ -2,7 +2,7 @@ import json
 import traceback
 config = {
     # "dataset_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/final_results/result_for_preprocessed_datasets.json",
-    "dataset_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/final_results/result_for_preprocessed_datasets_2.json",
+    "dataset_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/final_results/result_for_preprocessed_datasets_5.json",
     "tmp_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/tmp_result.json"
 }
 with open(config["dataset_path"], "r") as f:
@@ -43,7 +43,9 @@ with open(config["dataset_path"], "r") as f:
                     evaluation_results[metric][7][ablation_index] += record["results"][index]["ablation_results"][ablation_index]["em_trim"]
                     evaluation_results[metric][8][ablation_index] += record["results"][index]["ablation_results"][ablation_index]["bleu"]
                     evaluation_results[metric][9][ablation_index] += record["results"][index]["ablation_results"][ablation_index]["bleu_trim"]
-                if record["results"][0]["ablation_results"][ablation_index]["Added_Identifie_Match"]["recall"] > record["results"][2]["ablation_results"][ablation_index]["Added_Identifie_Match"]["recall"]:
+                # if record["results"][0]["ablation_results"][ablation_index]["Added_Identifie_Match"]["recall"] > record["results"][2]["ablation_results"][ablation_index]["Added_Identifie_Match"]["recall"]:
+                #     records_to_analysis.append(record)
+                if record["results"][3]["ablation_results"][ablation_index]["Added_Identifie_Match"]["recall"] > 0.79:
                     records_to_analysis.append(record)
         except Exception as e:
             print(f"Error processing record {record['_id']}: {e}")

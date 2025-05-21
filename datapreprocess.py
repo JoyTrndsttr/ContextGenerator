@@ -4,10 +4,11 @@ from ContextGenerators.LanguageContextGeneratorManager import LanguageContextGen
 from getProjectCommitState import CLBPP, get_commit_details
 import re
 import traceback
+import time
 config = {
-    "dataset_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_2.json",
-    "output_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/preprocessed_datasets.json",
-    "log_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/log6.json"
+    "dataset_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_3.json",
+    "output_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/preprocessed_datasets_2.json",
+    "log_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/log8.json"
 }
 
 def get_json_value_number(str, key):
@@ -29,14 +30,14 @@ def normalize_text(text):
 def filter_record_by_new_identifier(record):
 
     # 由于CLBPP速度比较慢，这里先根据整个commit涉及到的path过滤一遍没有python文件的记录
-    paths_str, _ = get_commit_details(record["repo"], record["commit_url"])
-    lang_flag = False
-    for path in paths_str.split('\n'):
-        if path.endswith('.py'):
-            lang_flag = True
-            break
-    if not lang_flag:
-        raise Exception("Unsupported file type")
+    # paths_str, _ = get_commit_details(record["repo"], record["commit_url"])
+    # lang_flag = False
+    # for path in paths_str.split('\n'):
+    #     if path.endswith('.py'):
+    #         lang_flag = True
+    #         break
+    # if not lang_flag:
+    #     raise Exception("Unsupported file type")
 
     record = CLBPP(record)
     record["old"] = '\n'.join(record["old"].split('\n'))
@@ -92,6 +93,7 @@ def filter_record_by_new_identifier(record):
             if identifier in precise_definitions_names:
                 if contextGenerator.check_identifier_valid(identifier): new_added_identifiers_definition_strict.append(identifier)
             new_added_identifiers.append(identifier)
+    if not (new_added_identifiers_review_strict and new_added_identifiers_definition_strict): raise Exception("No new strictly added identifiers")
     if new_added_identifiers:
         record["old_identifiers"] = old_identifiers
         record["new_identifiers"] = new_identifiers
@@ -127,60 +129,65 @@ def review_line_exist_in_old(old_lines, review_line):
 def filtered_by_huristics_approaches(record):
     if record["review"].find("```") != -1: raise Exception("Review contains code block")
     if record["review"].find("suggestion") != -1: raise Exception("Review contains suggestion")
+    if len([line for line in record["new"].split('\n') if line.startswith("+")]) >= 6: raise Exception("Too many added lines")
     if not review_line_exist_in_old(record["old"].split('\n'), record["comment"]["review_position_line"]) : raise Exception("Review position line not in old code")
-    if not ((record["new_added_identifiers_review_strict"] or record["new_added_identifiers_definition_strict"])): raise Exception("No new strictly added identifiers")
     return record
 
-with open(config['log_path'], 'r') as f00:
-    count = json.load(f00)
+turn = 0
+while True:
 
-with open(config['output_path'], 'a') as f0:
-    with open(config['dataset_path'], 'r') as f:
-        records = [json.loads(line) for line in f]
-        records = records[64793:]
-        # records = records[18193:]
-        # records = [records[10]]
-        # records = json.load(f)
-        # records = [record for record in records if record["_id"]==4585]
-        # records = [record for record in records if record["review"]=="Can you share some evidence that this change is able to send metrics?\r\nMetrics are not fully covered in automated testing, so running this [unit test locally](https://github.com/google/clusterfuzz/blob/412b2e16153e29a0f2ce0ddf4cb4333af280e399/src/clusterfuzz/_internal/tests/core/metrics/monitor_test.py#L161) will ensure metrics are still making it to GCP\r\n\r\nThank you for the improvements"]
-        if not count:
-            count = {
-                "Total": 0,
-                "Successful_processed": 0,
-                "No_new_identifier_found": 0,
-                "Low_quality_sample": 0,
-                "No_new_strictlyadded_identifiers": 0,
-            }
-        for record in records:
-            #将count的信息写入文件
-            with open(config['log_path'], 'w') as f1:
-                count_str_keys = {str(k): v for k, v in count.items()}
-                json.dump(count_str_keys, f1, indent=4)
-            print(f"Processing {record['_id']}")
-            count["Total"] += 1
-            try:
-                pre_filtered_record = filter_record_by_new_identifier(record)
-                if not pre_filtered_record: 
-                    print(f"No new identifier found in {record['_id']}")
-                    count["No_new_identifier_found"] += 1
-                    continue
-                huristically_filtered_record = filtered_by_huristics_approaches(pre_filtered_record)
-                if not huristically_filtered_record: 
-                    print(f"No strictly added identifier found in {record['_id']}")
-                    count["No_new_strictlyadded_identifiers"] += 1
-                    continue
-                llm_filtered_record = filtered_by_relationship_between_diff_and_review_with_LLMs(huristically_filtered_record)
-                if not llm_filtered_record: 
-                    print(f"Low quality sample for {record['_id']}")
-                    count["Low_quality_sample"] += 1
-                    continue
-                f0.write(json.dumps(llm_filtered_record, ensure_ascii=False) + '\n')
-                print(f"Saved {record['_id']}")
-                count["Successful_processed"] += 1
-            except Exception as e:
-                print(f"Error processing {record['_id']}: {e}")
+    turn += 1
+    print(f"Start for turn {turn}")
+
+    with open(config['log_path'], 'r') as f00:
+        count = json.load(f00)
+
+    with open(config['output_path'], 'a') as f0:
+        with open(config['dataset_path'], 'r') as f:
+            records = [json.loads(line) for line in f]
+            if not count:
+                count = {
+                    "Total": 0,
+                    "Successful_processed": 0,
+                    "No_new_identifier_found": 0,
+                    "Low_quality_sample": 0,
+                    "No_new_strictlyadded_identifiers": 0,
+                }
+            if count["Total"] >= len(records):
+                break
+            records = records[count["Total"]:]
+            for record in records:
+                #将count的信息写入文件
+                with open(config['log_path'], 'w') as f1:
+                    count_str_keys = {str(k): v for k, v in count.items()}
+                    json.dump(count_str_keys, f1, indent=4)
+                print(f"Processing {record['_id']}")
+                count["Total"] += 1
                 try:
-                    key = e.args[0]
-                except: key = "Others"
-                count[key] = count.get(key, 0) + 1
-                traceback.print_exc()
+                    huristically_filtered_record = filtered_by_huristics_approaches(record)
+                    if not huristically_filtered_record: 
+                        print(f"No strictly added identifier found in {record['_id']}")
+                        count["No_new_strictlyadded_identifiers"] += 1
+                        continue
+                    pre_filtered_record = filter_record_by_new_identifier(huristically_filtered_record)
+                    if not pre_filtered_record: 
+                        print(f"No new identifier found in {record['_id']}")
+                        count["No_new_identifier_found"] += 1
+                        continue
+                    llm_filtered_record = filtered_by_relationship_between_diff_and_review_with_LLMs(pre_filtered_record)
+                    if not llm_filtered_record: 
+                        print(f"Low quality sample for {record['_id']}")
+                        count["Low_quality_sample"] += 1
+                        continue
+                    f0.write(json.dumps(llm_filtered_record, ensure_ascii=False) + '\n')
+                    print(f"Saved {record['_id']}")
+                    count["Successful_processed"] += 1
+                except Exception as e:
+                    print(f"Error processing {record['_id']}: {e}")
+                    try:
+                        key = e.args[0]
+                    except: key = "Others"
+                    count[key] = count.get(key, 0) + 1
+                    traceback.print_exc()
+    
+    time.sleep(3600)

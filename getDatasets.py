@@ -4,6 +4,7 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from utils.RequestGitHub import RequestGitHub
 import multiprocessing as mp
+from multiprocessing import Value, Lock
 import time
 import os
 import traceback
@@ -11,15 +12,16 @@ import traceback
 # 用来控制获取的GitHub token
 requestGitHub = RequestGitHub()
 
-github_tokens = json.load(open("/home/wangke/model/ContextGenerator/settings.json", encoding='utf-8'))["github_tokens"]
 repo_dir1 = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/success_repos.json"
 repo_dir2 = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/success_repos_2.json"
-output_dir = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_2.json"
-dataset_id = 0
+output_dir = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_3.json"
+dataset_id = Value('i', 0)
+dataset_lock = Lock()
 
-def get_datasample(diff, review, repo, commit_url):
-    global dataset_id
-    dataset_id += 1
+def get_datasample(diff, review, repo, commit_url, review_url, comment_info):
+    with dataset_lock:  # 加锁，确保只有一个进程能访问
+        dataset_id.value += 1
+        assigned_id = dataset_id.value
     diff_lines = diff.split("\n")[1:]
     old_lines = []
     new_lines = []
@@ -32,7 +34,7 @@ def get_datasample(diff, review, repo, commit_url):
             old_lines.append(line)
             new_lines.append(line)
     return {
-        "_id": dataset_id,
+        "_id": assigned_id,
         "repo": repo,
         "old": '\n'.join(old_lines),
         "new": '\n'.join(new_lines),
@@ -40,6 +42,8 @@ def get_datasample(diff, review, repo, commit_url):
         "review": review,
         "language": "py",
         "commit_url": commit_url,
+        "review_url": review_url,
+        "comment": comment_info
     }
 
 def requests_retry_session(
@@ -74,33 +78,38 @@ def get_content(url, token):
             time.sleep(600)
     raise Exception(f"Failed to get {url} after 6 retries")
 
-def get_pulls(repo, token):
+def get_pulls(repo):
     print(f"processing repo {repo}")
     #分页处理过多的pulls
     i=0
     while(True):
-        pulls = get_content(f"https://api.github.com/repos/{repo}/pulls?state=all&page={i+1}", token)
+        pulls = requestGitHub.get_response(f"https://api.github.com/repos/{repo}/pulls?state=all&page={i+1}").json()
         if not pulls: break
         i += 1
-        datasets = []
         for pull in pulls:
             try:
-                print(f"processing repo {repo} pull {pull['number']} with {token}")
+                print(f"processing repo {repo} pull {pull['number']}")
                 # if pull["created_at"] < "2023-03-01T00:00:00Z": break
                 created_at = pull["created_at"]
                 #获取commit信息
                 commits_url = pull["commits_url"]
-                commits = get_content(commits_url, token)
+                commits = requestGitHub.get_response(commits_url).json()
 
                 #获取review信息
                 comments_url = pull["review_comments_url"]
-                comments = get_content(comments_url, token)
+                comments = requestGitHub.get_response(comments_url).json()
+
                 for comment in comments:
                     if comment["diff_hunk"]:
-                        # print(comment["diff_hunk"])
                         comment_created_time = comment["created_at"]
                         # 找到diff_hunk中以'+'和'-'开头的行
                         path = comment["path"]
+                        if not path.endswith(".py"): continue
+                        comment_info = {
+                            "diff_hunk": comment["diff_hunk"],
+                            "review_position_line": comment["diff_hunk"].split('\n')[-1][1:], #一般来说最后一行是review指向的行
+                        }
+                        review_url = comment["url"]
                         diff_hunk = comment["diff_hunk"]
                         diff_hunk = diff_hunk.split("@@")[-1]
                         diff_hunk_lines = diff_hunk.split("\n")
@@ -121,14 +130,14 @@ def get_pulls(repo, token):
                             if comment_created_time >= commit_time: continue
                             #找commit after comment
                             url = commit["url"]
-                            commit = get_content(url, token)
+                            commit = requestGitHub.get_response(url).json()
                             files = commit["files"]
                             #file过多时，需要分页处理
                             page = 1
                             while True:
                                 page += 1
                                 commit_next_page_url = f"{url}?page={page}"
-                                commit_next_page = get_content(commit_next_page_url, token)
+                                commit_next_page = requestGitHub.get_response(commit_next_page_url).json()
                                 if not commit_next_page["files"]: break
                                 files.extend(commit_next_page["files"])
                             for file in files:
@@ -146,18 +155,20 @@ def get_pulls(repo, token):
                             if not hunks: continue
                             for hunk in hunks:
                                 hunk_lines = hunk.split('\n')
-                                hunk_lines = [line[1:].strip() for line in hunk_lines]   
+                                # 取RevisionDiffHunk中的old code，去掉开头的'+'/ '-'/ ' '
+                                hunk_lines = [line[1:].strip() for line in hunk_lines if not line.startswith('+')]   
                                 if len(hunk_lines) > 20: continue
                                 #如果lines的每一行都在hunk中，则匹配成功
                                 if all(line in hunk_lines for line in lines):
                                     match_flag = True
                                     # datasets.append(datasets)
-                                    dataset = get_datasample(hunk, comment["body"], repo, f"http://github.com/{repo}/pull/{pull['number']}/commits/{commit['sha']}")
+                                    dataset = get_datasample(hunk, comment["body"], repo, f"http://github.com/{repo}/pull/{pull['number']}/commits/{commit['sha']}", review_url, comment_info)
                                     dataset["created_at"] = created_at
                                     #将这一条记录添加到datasets中
                                     with open(f"{output_dir}", "a", encoding='utf-8') as f:
                                         json.dump(dataset, f, ensure_ascii=False)
                                         f.write("\n")
+                                        print(f"add dataset {dataset['_id']}")
                                     break
                             if match_flag: break
                     else : print(f"no diff_hunk in {comment['id']}")
@@ -166,9 +177,9 @@ def get_pulls(repo, token):
                 traceback.print_exc()
                 continue
 
-def process_dataset(repo, token):
+def process_dataset(repo):
     try:
-        get_pulls(repo, token)
+        get_pulls(repo)
     except Exception as e:
         print(f"Error processing {repo}: {e}")
         traceback.print_exc()
@@ -176,17 +187,17 @@ def process_dataset(repo, token):
 def main():
     _dublicate_repos = []
     repos = []
-    last_processed_id = 0
-    if os.path.exists(output_dir):
-        with open(output_dir, "r") as f0:
-            for line in f0:
-                dataset = json.loads(line.strip())
-                repo = dataset['repo']
-                if repo not in _dublicate_repos:
-                    _dublicate_repos.append(repo)
-                last_processed_id = dataset['_id']
-        global dataset_id
-        dataset_id = last_processed_id
+    # last_processed_id = 0
+    # if os.path.exists(output_dir):
+    #     with open(output_dir, "r") as f0:
+    #         for line in f0:
+    #             dataset = json.loads(line.strip())
+    #             repo = dataset['repo']
+    #             if repo not in _dublicate_repos:
+    #                 _dublicate_repos.append(repo)
+    #             last_processed_id = dataset['_id']
+    #     global dataset_id
+    #     dataset_id = last_processed_id
     with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json', 'r') as f:
         records = json.load(f)
         for record in records:
@@ -205,12 +216,9 @@ def main():
                 repos.append(repo)
     print(f"待处理的repo数量：{len(repos)}")
     
-    # 多进程处理
-    # with mp.Pool(processes=10) as pool:
-    #     pool.starmap(get_pulls, [(repo,) for repo in repos])
-
+    # process_dataset(repos[0])
     with mp.Pool(5) as pool:
-        results = [pool.apply_async(process_dataset, (repo, requestGitHub.next_github_token())) for repo in repos]
+        results = [pool.apply_async(process_dataset, (repo,)) for repo in repos]
         pool.close()
         pool.join()
     # for repo in repos:

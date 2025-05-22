@@ -5,6 +5,11 @@ from getProjectCommitState import CLBPP, get_commit_details
 import re
 import traceback
 import time
+from multiprocessing import Manager
+import multiprocessing as mp
+from collections import defaultdict
+import os
+
 config = {
     "dataset_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_3.json",
     "output_path": "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/preprocessed_datasets_2.json",
@@ -133,61 +138,89 @@ def filtered_by_huristics_approaches(record):
     if not review_line_exist_in_old(record["old"].split('\n'), record["comment"]["review_position_line"]) : raise Exception("Review position line not in old code")
     return record
 
+def check_dataset_valid(record):
+    try:
+        huristically_filtered_record = filtered_by_huristics_approaches(record)
+        if not huristically_filtered_record: 
+            print(f"No strictly added identifier found in {record['_id']}")
+            return "No_new_strictlyadded_identifiers"
+        pre_filtered_record = filter_record_by_new_identifier(huristically_filtered_record)
+        if not pre_filtered_record: 
+            print(f"No new identifier found in {record['_id']}")
+            return "No_new_identifier_found"
+        llm_filtered_record = filtered_by_relationship_between_diff_and_review_with_LLMs(pre_filtered_record)
+        if not llm_filtered_record: 
+            print(f"Low quality sample for {record['_id']}")
+            return "Low_quality_sample"
+        with open(config['output_path'], 'a') as f0:
+            f0.write(json.dumps(llm_filtered_record, ensure_ascii=False) + '\n')
+        print(f"Saved {record['_id']}")
+        return "Successful_processed"
+    except Exception as e:
+        print(f"Error processing {record['_id']}: {e}")
+        traceback.print_exc()
+        try:
+            key = e.args[0]
+            return key
+        except: return "Others"
+
+def store_to_log_file(keys, lock):
+    with lock:
+        with open(config['log_path'], 'r') as f00:
+            count = json.load(f00)
+        for key in keys:
+            count[key] = count.get(key, 0) + 1
+            count["Total"] += 1
+        with open(config['log_path'], 'w') as f00:
+            json.dump(count, f00, indent=4)
+            f00.flush()
+            os.fsync(f00.fileno())
+    
+def process_repos(records, lock):
+    repo = records[0]["repo"]
+    print(f"Processing {repo}: {len(records)} records")
+    keys = []
+    for record in records:
+        key = check_dataset_valid(record)
+        print(f"Processed {record['_id']}: {key}")
+        keys.append(key)
+    for i in range(5):
+        print(f"第{i+1}次尝试存储日志文件")
+        try:
+            store_to_log_file(keys, lock)
+            break
+        except Exception as e:
+            print("Warning: Error reading the log file, try again")
+            time.sleep(10)
+    print(f"Processed {repo}: {len(records)} records")
+
+def get_last_processed_id():
+    try:
+        with open(config['log_path'], 'r') as f00:
+            count = json.load(f00)
+        return count["Total"]
+    except:
+        return 0
+
 turn = 0
 while True:
-
     turn += 1
     print(f"Start for turn {turn}")
-
-    with open(config['log_path'], 'r') as f00:
-        count = json.load(f00)
-
-    with open(config['output_path'], 'a') as f0:
-        with open(config['dataset_path'], 'r') as f:
-            records = [json.loads(line) for line in f]
-            if not count:
-                count = {
-                    "Total": 0,
-                    "Successful_processed": 0,
-                    "No_new_identifier_found": 0,
-                    "Low_quality_sample": 0,
-                    "No_new_strictlyadded_identifiers": 0,
-                }
-            if count["Total"] >= len(records):
-                break
-            records = records[count["Total"]:]
-            for record in records:
-                #将count的信息写入文件
-                with open(config['log_path'], 'w') as f1:
-                    count_str_keys = {str(k): v for k, v in count.items()}
-                    json.dump(count_str_keys, f1, indent=4)
-                print(f"Processing {record['_id']}")
-                count["Total"] += 1
-                try:
-                    huristically_filtered_record = filtered_by_huristics_approaches(record)
-                    if not huristically_filtered_record: 
-                        print(f"No strictly added identifier found in {record['_id']}")
-                        count["No_new_strictlyadded_identifiers"] += 1
-                        continue
-                    pre_filtered_record = filter_record_by_new_identifier(huristically_filtered_record)
-                    if not pre_filtered_record: 
-                        print(f"No new identifier found in {record['_id']}")
-                        count["No_new_identifier_found"] += 1
-                        continue
-                    llm_filtered_record = filtered_by_relationship_between_diff_and_review_with_LLMs(pre_filtered_record)
-                    if not llm_filtered_record: 
-                        print(f"Low quality sample for {record['_id']}")
-                        count["Low_quality_sample"] += 1
-                        continue
-                    f0.write(json.dumps(llm_filtered_record, ensure_ascii=False) + '\n')
-                    print(f"Saved {record['_id']}")
-                    count["Successful_processed"] += 1
-                except Exception as e:
-                    print(f"Error processing {record['_id']}: {e}")
-                    try:
-                        key = e.args[0]
-                    except: key = "Others"
-                    count[key] = count.get(key, 0) + 1
-                    traceback.print_exc()
-    
+    with open(config['dataset_path'], 'r') as f:
+        records = [json.loads(line) for line in f]
+        last_processed_id = get_last_processed_id()
+        if last_processed_id >= len(records):
+            print(f"All records have been processed")
+            time.sleep(3600)
+            continue
+        else: records = records[last_processed_id:]
+        repo_map = defaultdict(list)
+        for record in records:
+            repo_map[record["repo"]].append(record)
+        with mp.Pool(processes=13) as pool:
+            with Manager() as manager:
+                lock = manager.Lock()
+                tasks = [(records, lock) for records in repo_map.values()]
+                pool.starmap(process_repos, tasks)
+    print(f"End for turn {turn}")
     time.sleep(3600)

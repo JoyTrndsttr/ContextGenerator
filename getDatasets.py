@@ -8,6 +8,7 @@ from multiprocessing import Value, Lock
 import time
 import os
 import traceback
+import re
 
 # 用来控制获取的GitHub token
 requestGitHub = RequestGitHub()
@@ -15,6 +16,7 @@ requestGitHub = RequestGitHub()
 repo_dir1 = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/success_repos.json"
 repo_dir2 = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/success_repos_2.json"
 output_dir = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_3.json"
+log_dir = "/mnt/ssd2/wangke/dataset/getDatasets.txt"
 dataset_id = Value('i', 0)
 dataset_lock = Lock()
 
@@ -78,7 +80,7 @@ def get_content(url, token):
             time.sleep(600)
     raise Exception(f"Failed to get {url} after 6 retries")
 
-def get_pulls(repo):
+def get_pulls(repo, pull_id = 1000000):
     print(f"processing repo {repo}")
     #分页处理过多的pulls
     i=0
@@ -87,6 +89,7 @@ def get_pulls(repo):
         if not pulls: break
         i += 1
         for pull in pulls:
+            if pull["number"] > pull_id: continue
             try:
                 print(f"processing repo {repo} pull {pull['number']}")
                 # if pull["created_at"] < "2023-03-01T00:00:00Z": break
@@ -177,27 +180,32 @@ def get_pulls(repo):
                 traceback.print_exc()
                 continue
 
-def process_dataset(repo):
+def process_dataset(repo, id=1000000):
     try:
-        get_pulls(repo)
+        get_pulls(repo, id)
     except Exception as e:
         print(f"Error processing {repo}: {e}")
         traceback.print_exc()
 
+def extract_last_pulls(log_dir):
+    pattern = re.compile(r'processing repo (\S+) pull (\d+)')
+    repo_latest = {}
+
+    with open(log_dir, 'r', encoding='utf-8') as log_file:
+        for line in log_file:
+            match = pattern.search(line)
+            if match:
+                repo = match.group(1)
+                pull_id = int(match.group(2))
+                if repo not in repo_latest or pull_id < repo_latest[repo]:
+                    repo_latest[repo] = pull_id
+
+    return repo_latest
+
 def main():
     _dublicate_repos = []
     repos = []
-    # last_processed_id = 0
-    # if os.path.exists(output_dir):
-    #     with open(output_dir, "r") as f0:
-    #         for line in f0:
-    #             dataset = json.loads(line.strip())
-    #             repo = dataset['repo']
-    #             if repo not in _dublicate_repos:
-    #                 _dublicate_repos.append(repo)
-    #             last_processed_id = dataset['_id']
-    #     global dataset_id
-    #     dataset_id = last_processed_id
+    dataset_id.value = 9404
     with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json', 'r') as f:
         records = json.load(f)
         for record in records:
@@ -215,16 +223,25 @@ def main():
             if repo not in repos and repo not in _dublicate_repos:
                 repos.append(repo)
     print(f"待处理的repo数量：{len(repos)}")
+
+    try:
+        repo_latest = extract_last_pulls(log_dir)
+    except:
+        repo_latest = {}
+
+    pairs = []
     
-    # process_dataset(repos[0])
-    with mp.Pool(5) as pool:
-        results = [pool.apply_async(process_dataset, (repo,)) for repo in repos]
+    for repo in repos:
+        if repo in repo_latest:
+            id = repo_latest[repo]
+            pairs.append((repo, id))
+        else:
+            pairs.append((repo, 1000000))
+    
+    with mp.Pool(13) as pool:
+        results = [pool.apply_async(process_dataset, (repo, id)) for repo, id in pairs]
         pool.close()
         pool.join()
-    # for repo in repos:
-    #     process_dataset(repo, requestGitHub.next_github_token())
-        
-    # get_pulls()
 
 if __name__ == '__main__':
     main()

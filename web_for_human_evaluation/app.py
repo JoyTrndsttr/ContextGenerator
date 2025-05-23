@@ -3,34 +3,20 @@ import json
 import os
 import re
 import copy
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils.RequestLLMByApi import RequestLLMByApi
 
+request_llm_by_api = RequestLLMByApi()
 # 文件路径
 # data_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_filtered_5.json"
 # output_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered.json"
-data_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/preprocessed_datasets_2.json"
+data_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/cleaned_datasets_with_analysis.json"
 output_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered_4.json"
 
 # 读取数据
 with open(data_file, "r", encoding="utf-8") as f:
     all_records = [json.loads(line) for line in f]
-
-print(f"Total {len(all_records)} records.")
-review_urls = set()
-commit_urls = set()
-_records = []
-for record in all_records:
-    if record["review_url"] not in review_urls:
-        _records.append(record)
-        review_urls.add(record["review_url"])
-print(f"review_url过滤: {len(_records)}")
-records = _records
-_records = []
-for record in records:
-    if record["commit_url"] not in commit_urls:
-        _records.append(record)
-        commit_urls.add(record["commit_url"])
-print(f"commit_url过滤: {len(_records)}")
-records = _records
 
 # 获取最后一个已通过记录的 _id
 passed_records = []
@@ -48,7 +34,15 @@ if os.path.exists(output_file):
             last_passed_id = passed_records[-1].get("_id", 0)
 
 # 根据 last_passed_id 筛选出待审查记录
-records_to_review = [r for r in records if r.get("_id", 0) > last_passed_id]
+try:
+    index = all_records.index(next((r for r in all_records if r.get("_id", 0) == last_passed_id), {})) + 1
+except:
+    index = 0
+records_to_review = all_records[index:]
+records_to_review = [r for r in records_to_review if r.get("analysis_by_deepseek_r1",None) and not r.get("analysis_by_deepseek_r1").startswith("不合格")]
+
+# # 使用 index 来跟踪当前展示位置
+# records_to_review = [r for r in all_records if r.get("_id", 0) > last_passed_id]
 
 # 使用 index 来跟踪当前展示位置
 index = 0
@@ -76,10 +70,21 @@ def review_line_exist_in_old(old_lines, review_line):
     review_line = normalize_text(review_line)
     return review_line in old_lines
 
+def get_analysis(record):
+    code_diff, review, review_line, NIDS = record["diff_hunk"], record["review"], record["comment"]["review_position_line"], record.get("new_added_identifiers_definition_strict", [])
+    code_diff = '\n'.join(code_diff.split("\n")[1:])
+    prompt = request_llm_by_api.prompt_for_estimate_dataset(code_diff, review, review_line, NIDS)
+    print(prompt)
+    record["prompt_for_deepseek_r1"] = prompt
+    record["analysis_by_deepseek_r1"] = request_llm_by_api.get_deepseek_response(prompt)
+    return record
+
 def show_record():
     global index
     if index >= len(records_to_review):
         return "✅ 所有记录已评估完毕。", f"{len(passed_records)} / {len(records_to_review)}", "", "", "", "", ""
+    # if not records_to_review[index].get("analysis_by_deepseek_r1", None):
+    #     records_to_review[index] = get_analysis(records_to_review[index])
     record = copy.deepcopy(records_to_review[index])
     record["old"] = record["old"].split("\n")
     record["new"] = record["new"].split("\n")
@@ -90,6 +95,7 @@ def show_record():
     diff_hunk = "\n".join(record["diff_hunk"])
     review_position_line = record["comment"].get("review_position_line", "未知")
     record_NIDS = ','.join(record.get("new_added_identifiers_definition_strict", []))
+    analysis = record.get("analysis_by_deepseek_r1", "未评估")
     
     if not review_line_exist_in_old(record["old"], review_position_line):
         reject_record()
@@ -102,7 +108,7 @@ def show_record():
     # 显示进度
     progress = f"{index + 1} / {len(records_to_review)} Processed: {len(passed_records)}"
 
-    return progress, review, diff_hunk, review_position_line, record_NIDS, record_content
+    return progress, review, diff_hunk, review_position_line, record_NIDS, analysis, record_content
 
 def pass_record():
     global index
@@ -147,6 +153,7 @@ with gr.Blocks() as demo:
         review_position_display = gr.Textbox(label="Review Position", interactive=False, lines=2)
 
         record_NIDS_display = gr.Textbox(label="NIDS", interactive=False, lines=1)
+        analysis_display = gr.Textbox(label="Analysis", interactive=False, lines=5)
 
         # 按钮
         with gr.Row():
@@ -157,11 +164,11 @@ with gr.Blocks() as demo:
         record_display = gr.Code(label="Current Record", language="json", lines=20)
 
     
-    btn_pass.click(pass_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_NIDS_display, record_display])
-    btn_reject.click(reject_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_NIDS_display, record_display])
-    btn_rollback.click(rollback_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_NIDS_display, record_display])
+    btn_pass.click(pass_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_NIDS_display, analysis_display, record_display])
+    btn_reject.click(reject_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_NIDS_display, analysis_display, record_display])
+    btn_rollback.click(rollback_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_NIDS_display, analysis_display, record_display])
 
     # 初始化内容
-    demo.load(show_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_NIDS_display, record_display,])
+    demo.load(show_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_NIDS_display, analysis_display, record_display,])
 
-demo.launch(server_name="0.0.0.0", server_port=7860)
+demo.launch(server_name="0.0.0.0", server_port=7860, share=True)

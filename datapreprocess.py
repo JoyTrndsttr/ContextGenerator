@@ -166,15 +166,24 @@ def check_dataset_valid(record):
 
 def store_to_log_file(keys, lock):
     with lock:
-        with open(config['log_path'], 'r') as f00:
-            count = json.load(f00)
-        for key in keys:
-            count[key] = count.get(key, 0) + 1
-            count["Total"] += 1
-        with open(config['log_path'], 'w') as f00:
-            json.dump(count, f00, indent=4)
-            f00.flush()
-            os.fsync(f00.fileno())
+        for i in range(5):
+            print(f"第{i+1}次尝试存储日志文件")
+            try:
+                with open(config['log_path'], 'r') as f00:
+                    count = json.load(f00)
+                for key in keys:
+                    count["Total"] = count.get("Total", 0) + 1
+                    count[str(key)] = count.get(key, 0) + 1
+                with open(config['log_path'], 'w') as f00:
+                    json.dump(count, f00, indent=4)
+                    f00.flush()
+                    os.fsync(f00.fileno())
+                return True
+            except Exception as e:
+                print("Warning: Error reading the log file, try again")
+                traceback.print_exc()
+                time.sleep(10)
+        return False
     
 def process_repos(records, lock):
     repo = records[0]["repo"]
@@ -184,14 +193,8 @@ def process_repos(records, lock):
         key = check_dataset_valid(record)
         print(f"Processed {record['_id']}: {key}")
         keys.append(key)
-    for i in range(5):
-        print(f"第{i+1}次尝试存储日志文件")
-        try:
-            store_to_log_file(keys, lock)
-            break
-        except Exception as e:
-            print("Warning: Error reading the log file, try again")
-            time.sleep(10)
+    flag = store_to_log_file(keys, lock)
+    if not flag: print(f"Warning: Failed to store log file for {repo}")
     print(f"Processed {repo}: {len(records)} records")
 
 def get_last_processed_id():

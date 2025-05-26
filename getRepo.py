@@ -37,10 +37,10 @@ def fetch_data(url, params, session):
             else:
                 raise e
 
-def get_top_python_repos(top_n=5000):
+def get_top_repos(top_n=5000, language="python"):
     url = "https://api.github.com/search/repositories"
     query_params = {
-        "q": "language:python",
+        "q": f"language:{language}",
         "sort": "stars",
         "order": "desc",
         "per_page": 100
@@ -123,7 +123,7 @@ def process_repositories():
     with open(output_dir, 'r') as f:
         repos = json.load(f)
     
-    new_repos = get_top_python_repos(top_n=5000)
+    new_repos = get_top_repos(top_n=5000, language="java")
     repos = list(set(repos + new_repos))
     with open(output_dir, "w") as f:
         json.dump(repos, f)

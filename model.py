@@ -3,6 +3,7 @@ import json
 from openai import OpenAI
 from evaluation import myeval
 from utils.RequestModel import OpenAIUtils
+from utils.RequestLLMByApi import RequestLLMByApi
 from utils.RequestLLM import RequestLLM
 import re
 import logging
@@ -11,6 +12,7 @@ model = OpenAIUtils(model_id="llama:7b")
 logging.basicConfig(filename='log.txt', level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s', filemode='w')
 deepseek_model = RequestLLM()
+request_llm_by_api = RequestLLMByApi()
 
 def prompt_for_dataset_valid_or_discard_estimation(old_code: str, review: str, new_code: str) -> str:
     prompt = "\nTask Prompt: Classify Code Review Data Sample for Dataset Quality Filtering"
@@ -443,6 +445,13 @@ def get_deepseek_response(user_prompt, system_prompt = None):
 def get_full_deepseek_response(user_prompt, system_prompt = None):
     code, think, answer = deepseek_model.request_deepseek(user_prompt, system_prompt if system_prompt else None)
     return code, think, answer
+
+def get_deepseek_r1_response(user_prompt, system_prompt = None):
+    answer= request_llm_by_api.get_deepseek_response(user_prompt, system_prompt if system_prompt else None)
+    code = re.search(r'```(.*)```', answer,re.DOTALL)
+    if code:
+        code = code.group(1)
+    return code, answer
 
 def calc_em_and_bleu(new, new_code):
     new_without_plus = remove_prefix(new)

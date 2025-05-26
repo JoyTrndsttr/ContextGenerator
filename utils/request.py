@@ -36,10 +36,10 @@ with open(data_file, "r", encoding="utf-8") as f:
     records = [json.loads(line) for line in f]
     last_saved_id = 0
     for i, record in enumerate(records):
-        if record["_id"] == 20843:
+        if record["_id"] == 128081:
             last_saved_id = i
             break
-    records = records[last_saved_id+2:]
+    records = records[last_saved_id+1:]
 
 for record in records:
     if not record.get("analysis_by_deepseek_r1", None):

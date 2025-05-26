@@ -6,6 +6,7 @@ import re
 import traceback
 import multiprocessing as mp
 from collections import defaultdict
+import time
 
 class AgentRefiner:
     def __init__(self, config_file, record):
@@ -24,14 +25,20 @@ class AgentRefiner:
         self.review_info = self.languageContextGenerator.comment
         self.question_for_in_file_context, self.in_file_context_summary, self.question_for_cross_file_context, self.cross_file_context_summary = "", "", "", ""
 
-    def get_refinement_result(self, prompt_type = "vallina", llm = "llama", intention = False):
+    def get_refinement_result(self, prompt_type = "vallina", llm = "llama", intention = False, with_review_line = True):
         def get_code_from_response(response):
-            code_blocks = re.findall(r'```(.*?)```', response, re.DOTALL)
-            if code_blocks:
-                last_block = code_blocks[-1]
-                return last_block
-            else:
-                return ""
+            # 1. 提取model_code，被```包裹的部分
+            try:
+                pattern = re.compile(r"```(.*?)```", re.S)
+                model_code = pattern.findall(response)[-1]
+            except:
+                print("error id:", id)
+                model_code = response
+            # 2. 按行分割，第一行注意是python或其他语言描述，要舍弃
+            model_code_lines = model_code.split("\n")
+            model_code_lines = model_code_lines[1:]
+            model_code = "\n".join(model_code_lines)
+            return model_code
         
         old_without_minus, record, turn, review_info = self.old_without_minus, self.record, self.turn, self.review_info
         # max_attempts = 3
@@ -39,7 +46,7 @@ class AgentRefiner:
         for i in range(max_attempts):
             ablation_result = {"turn": turn, "ablation_info": "", "prompt_for_refinement": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
             if prompt_type == "vallina":
-                prompt_for_refinement = model.prompt_for_refinement(old_without_minus, record["review"], review_info, self.question_for_in_file_context, self.in_file_context_summary, self.question_for_cross_file_context, self.cross_file_context_summary)
+                prompt_for_refinement = model.prompt_for_refinement(old_without_minus, record["review"], review_info if with_review_line else None, self.question_for_in_file_context, self.in_file_context_summary, self.question_for_cross_file_context, self.cross_file_context_summary)
             elif prompt_type == "self_generated":
                 data = {
                     "comment": record["review"],
@@ -51,6 +58,8 @@ class AgentRefiner:
                     _ , data["intention"] = model.get_model_response(prompt_for_intention, system_prompt_for_intention)
                 elif llm == "deepseek":
                     _ , _, data["intention"] = model.get_full_deepseek_response(prompt_for_intention, system_prompt_for_intention)
+                elif llm == "deepseek_r1":
+                    _ , data["intention"] = model.get_deepseek_r1_response(prompt_for_intention, system_prompt_for_intention)
                 else: raise ValueError("Invalid llm")
                 prompt_for_refinement = model.get_selfgen_prompt(data)
             else: raise ValueError("Invalid prompt_type")
@@ -59,6 +68,8 @@ class AgentRefiner:
                 new_code, answer = model.get_model_response(prompt_for_refinement)
             elif llm == "deepseek":
                 new_code, think, answer = model.get_full_deepseek_response(prompt_for_refinement)
+            elif llm == "deepseek_r1":
+                new_code, answer = model.get_deepseek_r1_response(prompt_for_refinement)
             else: raise ValueError("Invalid llm")
             ablation_result["prompt_for_refinement"] = prompt_for_refinement.split('\n')
             if not new_code: continue
@@ -200,10 +211,25 @@ class AgentRefiner:
 
         #第一次运行：获取intention的结果
         self.turn, turn = 1, 1
-        results.append({"turn": 1, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [self.get_refinement_result(prompt_type="self_generated"), self.get_refinement_result(prompt_type="self_generated", llm="deepseek", intention=True)]})
-        #第二次运行：获取Vallina的结果
+        results.append({"turn": 1, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
+            self.get_refinement_result(prompt_type="self_generated", intention=True),
+            self.get_refinement_result(prompt_type="self_generated", llm="deepseek", intention=True),
+            self.get_refinement_result(prompt_type="self_generated", llm="deepseek_r1", intention=True)
+            ]})
+        #第一次运行：获取Guo2024的结果
         self.turn, turn = 2, 2
-        results.append({"turn": 2, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [self.get_refinement_result(), self.get_refinement_result(llm="deepseek")]})
+        results.append({"turn": 2, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
+            self.get_refinement_result(with_review_line=False), 
+            self.get_refinement_result(llm="deepseek", with_review_line=False),
+            self.get_refinement_result(llm="deepseek_r1", with_review_line=False)
+            ]})
+        #第二次运行：获取Vallina的结果
+        self.turn, turn = 3, 3
+        results.append({"turn": 3, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
+            self.get_refinement_result(), 
+            self.get_refinement_result(llm="deepseek"),
+            self.get_refinement_result(llm="deepseek_r1")
+            ]})
 
         #1. Instruction 阶段
         #判断是否需要额外的上下文信息，包括In-file context和Cross-file context
@@ -262,9 +288,13 @@ class AgentRefiner:
                 else:
                     if new_question: question_for_in_file_context = new_question
 
-        #再运行一次refinement作为turn1的结果,此结果中已包含In-file context
-        self.turn, turn = 3, 3
-        results.append({"turn": 3, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [self.get_refinement_result(), self.get_refinement_result(llm="deepseek")]})
+        #再运行一次refinement作为turn4的结果,此结果中已包含In-file context
+        self.turn, turn = 4, 4
+        results.append({"turn": 4, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
+            self.get_refinement_result(), 
+            self.get_refinement_result(llm="deepseek"),
+            self.get_refinement_result(llm="deepseek_r1")
+            ]})
 
         #1.2 处理Cross-file context
         # if cross_file_context_required == "1":
@@ -290,8 +320,8 @@ class AgentRefiner:
                 f1_score = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
                 return {"recall": recall, "precision": precision, "f1_score": f1_score}
 
-            self.turn = turn = 4
-            result = {"turn": 4}
+            self.turn = turn = 5
+            result = {"turn": 5}
             #1.2.1 在code block所在文件中列出10个待查找的函数名候选
             record["names_of_relevance_context"] = []
             prompt_for_names_of_relevance_context = model.prompt_for_names_of_relevance_context(record["review"], self.in_file_context, question_for_cross_file_context, review_info)
@@ -363,7 +393,7 @@ class AgentRefiner:
                     else:
                         if new_question: question_for_cross_file_context = new_question        
                 #1.2.4：Refinement Stage
-                result["ablation_results"] = [self.get_refinement_result(), self.get_refinement_result(llm="deepseek")]
+                result["ablation_results"] = [self.get_refinement_result(), self.get_refinement_result(llm="deepseek"), self.get_refinement_result(llm="deepseek_r1")]
                 results.append(result)      
         record["definitions"], record["results"] = "omitted", results
         #计算指标
@@ -388,8 +418,8 @@ def process_repo_group(config, repo, records):
             try:
                 agent = AgentRefiner(config, record)
                 record = agent.process()
-                # with open(output_file, "a", encoding="utf-8") as f:
-                #     f.write(json.dumps(record) + "\n")
+                with open(output_file, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(record) + "\n")
             except Exception as e:
                 print(f'Error processing ID {id}: {e}')
                 traceback.print_exc()
@@ -401,11 +431,14 @@ def process_repo_group(config, repo, records):
 
 def main():
     config = {
-        # "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/strict_filtered_datasets.json',
-        "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/final_datasets_human_filtered.json',
-        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_results/result_for_preprocessed_datasets_6.json',
+        "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered_4.json',
+        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_results/result2.json',
         # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
     }
+
+    print("开始等待")
+    time.sleep(2700)
+    print("开始处理数据集")
 
     # 继续处理未完成的记录
     try:
@@ -428,15 +461,15 @@ def main():
         # records = [record for record in records if record["_id"] not in ids]
         # records = records[:3000]
         # fileterd by model
-        records = [record for record in records if record["dataset_valid_or_discard_estimation"]["Classification"] == "Valid"]
+        # records = [record for record in records if record["dataset_valid_or_discard_estimation"]["Classification"] == "Valid"]
         print(f"待处理记录数: {len(records)}")
 
-    # 测试单个记录
-    # config["output_path"] = '/mnt/ssd2/wangke/dataset/AgentRefiner/tmp_result.json'
-    record = [record for record in records if record["_id"] == 6]
+    # # 测试单个记录
+    # # config["output_path"] = '/mnt/ssd2/wangke/dataset/AgentRefiner/tmp_result.json'
+    # # record = [record for record in records if record["_id"] == 6]
     # record = [records[0]]
-    process_repo_group(config, record[0]["repo"], record)
-    return
+    # process_repo_group(config, record[0]["repo"], record)
+    # return
 
     # 按repo分组（确保同repo顺序处理）
     repo_map = defaultdict(list)

@@ -100,7 +100,7 @@ def show_record():
     if not review_line_exist_in_old(record["old"], review_position_line):
         reject_record()
 
-    record["path"] = "omit"
+    # record["path"] = "omit"
     record["code_diff"] = "omit"
     
     record_content = json.dumps(record, ensure_ascii=False, indent=2)

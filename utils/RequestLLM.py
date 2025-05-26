@@ -46,7 +46,7 @@ class RequestLLM:
                 return None, think, output
             if new_code: 
                 new_code = new_code.group(1)
-                new_code = new_code.split("\n", 1)[1] #未验证
+                # new_code = new_code.split("\n", 1)[1] #未验证
                 if not new_code:
                     print("No code found in response 2")
                 return new_code, think, output

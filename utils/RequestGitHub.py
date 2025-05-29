@@ -9,7 +9,8 @@ import traceback
 class RequestGitHub:
     def __init__(self):
         self.github_tokens = json.load(open("/home/wangke/model/ContextGenerator/settings.json", encoding='utf-8'))["github_tokens"]
-        self.valid_github_tokens = [token for token in self.github_tokens if self.check_github_rate_limit(token)]
+        # self.valid_github_tokens = [token for token in self.github_tokens if self.check_github_rate_limit(token)]
+        self.valid_github_tokens = self.github_tokens
         self.token_index = 0
 
     def check_github_rate_limit(self, token):
@@ -64,7 +65,10 @@ class RequestGitHub:
                     return response
                 except Exception as e:
                     print(f"Error getting {url}: {e}")
-                    if e.response.status_code == 403: continue
+                    try:
+                        if e.response.status_code == 403: continue
+                    except:
+                        pass
                     else: 
                         traceback.print_exc()
                         raise Exception(f"{e.response.status_code}")

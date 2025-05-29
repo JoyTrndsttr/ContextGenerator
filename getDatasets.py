@@ -12,11 +12,12 @@ import re
 
 # 用来控制获取的GitHub token
 requestGitHub = RequestGitHub()
+lang = "java"
 
-repo_dir1 = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/success_repos.json"
-repo_dir2 = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/success_repos_2.json"
-output_dir = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_3.json"
-log_dir = "/mnt/ssd2/wangke/dataset/getDatasets.txt"
+repo_dir1 = "/data/DataLACP/wangke/recorebench/java/process/success_repos_2_java.json"
+# repo_dir2 = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/success_repos_2.json"
+output_dir = "/data/DataLACP/wangke/recorebench/java/datasets/new_datasets_java.json"
+log_dir = "/data/DataLACP/wangke/recorebench/java/log/getDatasets.txt"
 dataset_id = Value('i', 0)
 dataset_lock = Lock()
 
@@ -42,7 +43,7 @@ def get_datasample(diff, review, repo, commit_url, review_url, comment_info):
         "new": '\n'.join(new_lines),
         "diff_hunk": diff,
         "review": review,
-        "language": "py",
+        "language": lang,
         "commit_url": commit_url,
         "review_url": review_url,
         "comment": comment_info
@@ -107,7 +108,7 @@ def get_pulls(repo, pull_id = 1000000):
                         comment_created_time = comment["created_at"]
                         # 找到diff_hunk中以'+'和'-'开头的行
                         path = comment["path"]
-                        if not path.endswith(".py"): continue
+                        if not path.endswith(f".{lang}"): continue
                         comment_info = {
                             "diff_hunk": comment["diff_hunk"],
                             "review_position_line": comment["diff_hunk"].split('\n')[-1][1:], #一般来说最后一行是review指向的行
@@ -205,23 +206,23 @@ def extract_last_pulls(log_dir):
 def main():
     _dublicate_repos = []
     repos = []
-    dataset_id.value = 9404
-    with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json', 'r') as f:
-        records = json.load(f)
-        for record in records:
-            repo = record['repo']
-            if repo not in repos and repo not in _dublicate_repos:
-                repos.append(repo)
+    # dataset_id.value = 9404
+    # with open('/mnt/ssd2/wangke/CR_data/dataset/map_result/dataset_sorted_llama.json', 'r') as f:
+    #     records = json.load(f)
+    #     for record in records:
+    #         repo = record['repo']
+    #         if repo not in repos and repo not in _dublicate_repos:
+    #             repos.append(repo)
     with open(repo_dir1, "r") as f1:
         _repos = [line.strip() for line in f1]
         for repo in _repos:
             if repo not in repos and repo not in _dublicate_repos:
                 repos.append(repo)
-    with open(repo_dir2, "r") as f2:
-        _repos = [line.strip() for line in f2]
-        for repo in _repos:
-            if repo not in repos and repo not in _dublicate_repos:
-                repos.append(repo)
+    # with open(repo_dir2, "r") as f2:
+    #     _repos = [line.strip() for line in f2]
+    #     for repo in _repos:
+    #         if repo not in repos and repo not in _dublicate_repos:
+    #             repos.append(repo)
     print(f"待处理的repo数量：{len(repos)}")
 
     try:
@@ -238,7 +239,7 @@ def main():
         else:
             pairs.append((repo, 1000000))
     
-    with mp.Pool(13) as pool:
+    with mp.Pool(14) as pool:
         results = [pool.apply_async(process_dataset, (repo, id)) for repo, id in pairs]
         pool.close()
         pool.join()

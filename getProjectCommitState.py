@@ -68,16 +68,6 @@ def get_comment_info(record):
                 print(f"{e}, id:{record['_id']}")
                 comment_info["original_start_line"] = None
                 comment_info["review_hunk_start_line"] = None
-        # diff_hunk字段的最后一行一般就是review指向的行，然而在GitHub的结构中，review通常绑定到PR的当前状态而不是单独的commit，因此review_position_line可能指向错误的行，甚至是已经被删除的行/review之后新增的行
-        # 举例：https://github.com/celery/celery/pull/9038/commits/0d8936d909f385eca854feb6aee971c97793b0b0 此提交甚至比review的时间要晚，而review指向了此次提交新增的行
-        # 一些讨论：https://github.com/Reviewable/Reviewable/issues/437
-        # 因此，我们的做法是从diff_hunk最后一行开始，找到第一个非空行且出现在old_lines中的行，作为review_position_line
-        # index = len(diff_hunk_lines)-1
-        # for i in range(index, -1, -1):
-        #     line = diff_hunk_lines[i][1:]
-        #     if line and line in old_lines:
-        #         comment_info["review_position_line"] = line
-        #         break
         comment_info['review_position_line'] = diff_hunk_lines[-1][1:]
         if comment_info['review_position_line'] not in old_lines:
             print(f"Error finding position of comment in old code: id:{record['_id']}")
@@ -287,10 +277,10 @@ def restore_to_commit(repo, repo_path, target_commit):
 
 def CLBPP(record):
     if not record: return None
-    record_id, repo, commit_url, review = record["_id"], record["repo"], record["commit_url"], record["review"]
-    repo_path = f"/mnt/ssd2/wangke/CR_data/repo/{repo.split('/')[1]}"
+    record_id, repo, commit_url, review_url = record["_id"], record["repo"], record["commit_url"], record["review_url"]
+    # repo_path = f"/mnt/ssd2/wangke/CR_data/repo/{repo.split('/')[1]}"
+    repo_path = f"/data/DataLACP/wangke/recorebench/repo/repo/{repo.split('/')[1]}"
     commit_hash = commit_url.split('/')[-1]
-    # comment_info, review_url = get_comment_info(record)
     
     #获取commit_hash的parents_commit_hash，将项目回溯到parents_commit_hash的状态
     parents_commit_hash = get_commit_info(repo, commit_hash).get('parents', [])[0]['sha']
@@ -304,11 +294,8 @@ def CLBPP(record):
                     print(f"Applied patch for {file_info['filename']} commit_info:{commit_info['sha']}")
                 except PermissionError:
                     print(f"Error,failed to apply patch for {file_info['filename']} commit_info:{commit_info['sha']}")
-        paths_str, code_diff_str = get_commit_details(repo, commit_url)
-        # record['review_url'] = review_url
-        record['path'] = paths_str
-        record['code_diff'] = code_diff_str
-        # record['comment'] = comment_info
+        review_info = requestGitHub.get_response(review_url).json()
+        record['path'] = review_info['path']
         print(f"Successfully processed record {record_id}")
         return record
     else:

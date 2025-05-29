@@ -11,10 +11,11 @@ import subprocess
 github_tokens = json.load(open("/home/wangke/model/ContextGenerator/settings.json", encoding='utf-8'))["github_tokens"]
 token_index = 0
 GITHUB_TOKEN = github_tokens[token_index]
-clone_dir = r'/mnt/ssd2/wangke/CR_data/repo'
-output_dir = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/repos.json"
-success_repo_dir = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/success_repos_2.json"
-failed_repo_dir = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/failed_repos_2.json"
+clone_dir = r'/data/DataLACP/wangke/recorebench/repo/repo'
+source_dir = "/mnt/ssd2/wangke/CR_data/dataset/pre/cacr_java.json"
+output_dir = "/data/DataLACP/wangke/recorebench/java/process/repos_java.json"
+success_repo_dir = "/data/DataLACP/wangke/recorebench/java/process/success_repos_2_java.json"
+failed_repo_dir = "/data/DataLACP/wangke/recorebench/java/process/failed_repos_2_java.json"
 
 def update_github_token():
     global GITHUB_TOKEN
@@ -37,7 +38,7 @@ def fetch_data(url, params, session):
             else:
                 raise e
 
-def get_top_repos(top_n=5000, language="python"):
+def get_top_repos(top_n=5000, language="java"):
     url = "https://api.github.com/search/repositories"
     query_params = {
         "q": f"language:{language}",
@@ -120,13 +121,26 @@ def clone_repository(repo_url, full_clone_path):
 
 def process_repositories():
     # Load the repositories from the JSON file
-    with open(output_dir, 'r') as f:
-        repos = json.load(f)
+    # try:
+    #     with open(output_dir, 'r') as f:
+    #         dublicate_repos = json.load(f)
+    # except:
+    #     dublicate_repos = []
+    # Load the repositories from the JSON file
+    try:
+        with open(source_dir, 'r') as f:
+            records = json.load(f)
+            repos = list(set([record['repo'] for record in records]))
+    except:
+        repos = []
     
-    new_repos = get_top_repos(top_n=5000, language="java")
-    repos = list(set(repos + new_repos))
-    with open(output_dir, "w") as f:
-        json.dump(repos, f)
+    # repos = list(set(repos) - set(dublicate_repos))
+    # repos = list(set(dublicate_repos) - set(repos))
+    # new_repos = get_top_repos(top_n=5000, language="java")
+    # repos = list(set(repos + new_repos))
+    # with open(output_dir, "w") as f:
+    #     json.dump(repos+dublicate_repos, f)
+    print(f"Repositories to process: {len(repos)}")
     
     clone_count = 0
     for repo in repos:
@@ -138,8 +152,8 @@ def process_repositories():
             continue
 
         repo_size = get_repo_size(repo)
-        if repo_size > 51200:  # More than 50MB in KB
-            continue
+        # if repo_size > 51200:  # More than 50MB in KB
+        #     continue
 
         repo_url = f"https://githubfast.com/{repo}.git"
         full_clone_path = os.path.join(clone_dir, repo.split('/')[-1])

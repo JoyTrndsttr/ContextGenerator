@@ -1,8 +1,5 @@
 #getContextGenerator.py
 import os
-import logging
-import json
-import psycopg2
 from psycopg2 import sql
 from tree_sitter import Language, Parser
 import tree_sitter_c as tsc
@@ -14,18 +11,14 @@ import tree_sitter_javascript as tsjs
 import tree_sitter_python as tspython
 import tree_sitter_ruby as tsruby
 import re
-import traceback
-# from ContextGenerators import PythonContextGenerators
-# from ContextGenerators import JavaContextGenerators
-# from ContextGenerators.PythonContextGenerator import PythonContextGenerator
 from ContextGenerators.PythonContextGenerator import PythonContextGenerator
+from ContextGenerators.JavaContextGenerator import JavaContextGenerator
 
 class LanguageContextGenerator:
     def __init__(self, record):
         #初始化变量
         self.record = record
-        self.repo_base_path = "/mnt/ssd2/wangke/CR_data/repo/"
-        # self.output_path = "/mnt/ssd2/wangke/CR_data/dataset/cacr_python_all.json"
+        self.repo_base_path = "/data/DataLACP/wangke/recorebench/repo/repo/"
         self.language_parsers = {
             '.c': self.load_language(Language(tsc.language())),
             '.cpp': self.load_language(Language(tscpp.language())),
@@ -37,70 +30,41 @@ class LanguageContextGenerator:
             '.rb': self.load_language(Language(tsruby.language())),
         }
         if not self.record: raise Exception("No record found")
-        self.record_id, self.repo_name, self.paths, self.code_diffs, self.old, self.comment = self.record['_id'], self.record['repo'], self.record['path'], self.record['code_diff'] , self.record['old'], self.record['comment']
-        self.code_diffs = json.loads(self.code_diffs)
-        self.repo_path = os.path.join(self.repo_base_path, self.repo_name.split('/')[1])
-        self.old = '\n'.join([line.strip() for line in self.old.split('\n') if line.strip()])
+        self.record_id, self.repo_name, self.code_diff, self.file_path, self.old, self.comment = self.record['_id'], self.record['repo'], self.record['diff_hunk'], self.record['file_path'], self.record['old'], self.record['comment']
 
-        #匹配old和code_diff,获取old在源代码中的位置
-        match,start_index,end_index = False, -1, -1
-        self.file_path = None
-        patchs,patch = [], []
-        for path,code_diff in self.code_diffs.items():
-            for line in code_diff.split('\n'):
-                if line.startswith('@@'):
-                    if patch:
-                        patchs.append(patch)
-                    patch = [line]
-                else:
-                    patch.append(line)
-            if patch: patchs.append(patch)
-            for patch in patchs:
-                patch = '\n'.join(patch)
-                match, start_index, end_index = self.compare_old_and_diff(self.old, patch)
-                self.file_path = os.path.join(self.repo_path, path)
-                if match: break
-            if match: break
-        if not match or not os.path.exists(self.file_path): raise Exception("Cannot match old code in code diff")
-        self.code_diff = patch
+        #截取RevisionDiffHunk的行号
+        try:
+            revision_diff_hunk_lines = self.code_diff.split('\n')[0]
+            original_code_start, orginal_code_scope, revised_code_start, revised_code_scope = re.findall(r'@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@', revision_diff_hunk_lines)[0]
+            self.ostart, self.oend = int(original_code_start), int(original_code_start) + int(orginal_code_scope)
+            self.rstart, self.rend = int(revised_code_start), int(revised_code_start) + int(revised_code_scope)
+        except:
+            raise Exception("Invalid code_diff format")
+
+        self.context_generator = None
+        if self.file_extension == '.py':
+            self.context_generator = PythonContextGenerator(self.parser, self.tree.root_node, self.source_code, self.file_path, self.code_diff, self.repo_name, (1, orginal_code_scope))
+        elif self.file_extension == '.java':
+            self.context_generator = JavaContextGenerator()
 
         #获取文件后缀并加载对应的语言解析器和上下文生成器
         self.file_extension = os.path.splitext(self.file_path)[1]
         if self.file_extension not in ['.py', '.java']: 
             raise Exception("Unsupported file type")
-        self.parser = self.language_parsers[self.file_extension]
-        self.tree,self.source_code = self.parse_file(self.file_path, self.parser)
-        self.context_generator = None
-        self.start_index, self.end_index = start_index, end_index
-        if self.file_extension == '.py':
-            self.context_generator = PythonContextGenerator(self.parser, self.tree.root_node, self.source_code, self.file_path, self.code_diff, self.repo_name, (start_index, end_index))
-
-    def get_context_generator_after_applying_diff(self):
-        plus_count = len([line for line in self.code_diff.split('\n') if line.startswith('+')])
-        minus_count = len([line for line in self.code_diff.split('\n') if line.startswith('-')])
-        return PythonContextGenerator(self.parser, self.tree.root_node, self.source_code, self.file_path, self.code_diff, self.repo_name, (self.start_index, self.end_index + plus_count - minus_count))
-    
-    def compare_old_and_diff(self, old, code_diff):
-        code_diff_lines = [line for line in code_diff.split('\n') if not line.startswith('+')]
-        old_lines = old.split('\n')
-        old_lines = [line for line in old_lines if line]
-        positions = []
-        for old_line in old_lines:
-            flag = False
-            if old_line in code_diff_lines:
-                positions.append(code_diff_lines.index(old_line))
-                flag = True
-            else:
-                for index, line in enumerate(code_diff_lines):
-                    position = line.find(old_line)
-                    if position != -1:
-                        positions.append(index)
-                        flag = True
-                        break
-            if not flag:
-                return False, -1, -1
-        # return True, positions[0], positions[-1]
-        return True, 1, len(code_diff_lines)-1
+        self.language = self.file_extension
+        
+    def get_context_generator(self, type = "original"):
+        start = self.ostart if type == "original" else self.rstart
+        end = self.oend if type == "original" else self.rend
+        language = self.language
+        if language == '.py':
+            self.parser = self.language_parsers[self.file_extension]
+            self.tree,self.source_code = self.parse_file(self.file_path, self.parser)
+            return PythonContextGenerator(self.parser, self.tree.root_node, self.source_code, self.file_path, self.code_diff, self.repo_name, (1, start - end))
+        elif language == '.java':
+            return JavaContextGenerator(self.file_path, self.repo_name, (start, end))
+        else:
+            return None
     
     def load_language(self, language): # 加载语言包
         parser = Parser()

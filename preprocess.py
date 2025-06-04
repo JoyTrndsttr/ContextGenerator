@@ -1,7 +1,7 @@
 import json
 import model
 from ContextGenerators.LanguageContextGeneratorManager import LanguageContextGenerator
-from getProjectCommitState import CLBPP, get_commit_details
+from getProjectCommitState import CLBPP, get_commit_details, clear
 import re
 import traceback
 import time
@@ -13,7 +13,9 @@ import os
 config = {
     "dataset_path": "/data/DataLACP/wangke/recorebench/java/datasets/new_datasets_java.json",
     "output_path": "/data/DataLACP/wangke/recorebench/java/datasets/preprocessed_datasets.json",
-    "log_path": "/data/DataLACP/wangke/recorebench/java/log/log1.json"
+    "log_path": "/data/DataLACP/wangke/recorebench/java/log/log1.json",
+    "base_dir": "/data/DataLACP/wangke/recorebench/repo/repo/",
+    "cache_dir": "/home/wangke/model/ContextGenerator/workspace/"
 }
 
 def get_json_value_number(str, key):
@@ -39,14 +41,15 @@ def filter_record_by_new_identifier(record):
     # record["new"] = '\n'.join(record["new"].split('\n'))
     languageContextGenerator = LanguageContextGenerator(record)
     contextGenerator = languageContextGenerator.context_generator
-    definitions_before_refinement = contextGenerator.node_list
-    old_identifiers = [def_bef.text.decode('utf-8') for def_bef in definitions_before_refinement]
-    old_identifiers = list(set(old_identifiers))
+    unique_old_identifiers = contextGenerator.identifiers_names
 
     # 应用ground truth补丁
-    diff = contextGenerator.code_diff
-    file_path = contextGenerator.file_path
+    diff = record["diff_hunk"]
     try:
+        repo = record["repo"].split('/')[1]
+        base_dir = config["base_dir"]
+        rel_path = record["path"]
+        file_path = f"{base_dir}{repo}/{rel_path}"
         with open(file_path, 'r', encoding='utf-8') as file:
             file_content = file.readlines()
     except Exception as e:
@@ -71,30 +74,30 @@ def filter_record_by_new_identifier(record):
     with open(file_path, 'w', encoding='utf-8') as file:
         file.writelines(file_content)
 
-    _languageContextGenerator = LanguageContextGenerator(record)
-    contextGenerator = _languageContextGenerator.get_context_generator_after_applying_diff()
-    definitions_after_patch = contextGenerator.node_list
-    new_identifiers = [def_aft.text.decode('utf-8') for def_aft in definitions_after_patch]
-    new_identifiers = list(set(new_identifiers))
-    precise_definitions = contextGenerator.getContext()
-    precise_definitions_names = [def_prec["name"] for def_prec in precise_definitions]
+    new_contextGenerator = languageContextGenerator.get_context_generator("revised")
+    new_identifiers = new_contextGenerator.identifiers_names
+    new_identifiers_definition_restrict = new_contextGenerator.identifiers_definition_strict
+    print(f"NIDS: {new_identifiers_definition_restrict}")
 
     new_added_identifiers = []
     new_added_identifiers_review_strict = []
     new_added_identifiers_definition_strict = []
-    for identifier in new_identifiers:
-        if identifier not in old_identifiers:
-            if record["review"].find(identifier) == -1: new_added_identifiers_review_strict.append(identifier)
-            if identifier in precise_definitions_names:
-                if contextGenerator.check_identifier_valid(identifier): new_added_identifiers_definition_strict.append(identifier)
-            new_added_identifiers.append(identifier)
+    for new_identifier in new_identifiers:
+        if new_identifier not in unique_old_identifiers:
+            if record["review"].find(new_identifier) == -1: new_added_identifiers_review_strict.append(new_identifier)
+            if new_identifier not in new_identifiers_definition_restrict:
+                new_added_identifiers_definition_strict.append(new_identifier)
+            new_added_identifiers.append(new_identifier)
+    unique_new_added_identifiers = list(set(new_added_identifiers))
+    unique_new_added_identifiers_review_strict = list(set(new_added_identifiers_review_strict))
+    unique_new_added_identifiers_definition_strict = list(set(new_added_identifiers_definition_strict))
     if not (new_added_identifiers_review_strict and new_added_identifiers_definition_strict): raise Exception("No new strictly added identifiers")
     if new_added_identifiers:
-        record["old_identifiers"] = old_identifiers
+        record["old_identifiers"] = unique_old_identifiers
         record["new_identifiers"] = new_identifiers
-        record["new_added_identifiers"] = new_added_identifiers
-        record["new_added_identifiers_review_strict"] = new_added_identifiers_review_strict
-        record["new_added_identifiers_definition_strict"] = new_added_identifiers_definition_strict
+        record["new_added_identifiers"] = unique_new_added_identifiers
+        record["new_added_identifiers_review_strict"] = unique_new_added_identifiers_review_strict
+        record["new_added_identifiers_definition_strict"] = unique_new_added_identifiers_definition_strict
         return record
     else:
         return None
@@ -177,6 +180,9 @@ def store_to_log_file(keys, lock):
     
 def process_repos(records, lock):
     repo = records[0]["repo"]
+    #清空缓存
+    cache_dir = config["cache_dir"]
+    clear(cache_dir)
     print(f"Processing {repo}: {len(records)} records")
     keys = []
     for record in records:
@@ -202,7 +208,7 @@ while True:
     with open(config['dataset_path'], 'r') as f:
         records = [json.loads(line) for line in f]
 
-        records = [record for record in records if record["_id"] == 19564]
+        records = [record for record in records if record["_id"] == 10143] # 需要重点测试2528
         process_repos(records, None)
         break
 

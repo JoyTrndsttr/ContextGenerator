@@ -1,5 +1,6 @@
 import subprocess
 import os
+import shutil
 import json
 from utils.RequestGitHub import RequestGitHub
 import re
@@ -10,6 +11,15 @@ requestGitHub = RequestGitHub()
 
 # 最大查找 parent commit 的次数
 MAX_PARENT_SEARCH = 100
+
+# 清空特定路径下所有文件
+def clear(path):
+    for filename in os.listdir(path):
+        full_path = os.path.join(path, filename)
+        if os.path.isfile(full_path) or os.path.islink(full_path):
+            os.remove(full_path)
+        elif os.path.isdir(full_path):
+            shutil.rmtree(full_path)
 
 #获取Json文件中的信息
 def get_info_from_jsonfile(file_path, id):

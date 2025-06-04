@@ -30,7 +30,7 @@ class LanguageContextGenerator:
             '.rb': self.load_language(Language(tsruby.language())),
         }
         if not self.record: raise Exception("No record found")
-        self.record_id, self.repo_name, self.code_diff, self.file_path, self.old, self.comment = self.record['_id'], self.record['repo'], self.record['diff_hunk'], self.record['file_path'], self.record['old'], self.record['comment']
+        self.record_id, self.repo_name, self.code_diff, self.file_path, self.old, self.comment = self.record['_id'], self.record['repo'], self.record['diff_hunk'], self.record['path'], self.record['old'], self.record['comment']
 
         #截取RevisionDiffHunk的行号
         try:
@@ -41,21 +41,21 @@ class LanguageContextGenerator:
         except:
             raise Exception("Invalid code_diff format")
 
-        self.context_generator = None
-        if self.file_extension == '.py':
-            self.context_generator = PythonContextGenerator(self.parser, self.tree.root_node, self.source_code, self.file_path, self.code_diff, self.repo_name, (1, orginal_code_scope))
-        elif self.file_extension == '.java':
-            self.context_generator = JavaContextGenerator()
-
         #获取文件后缀并加载对应的语言解析器和上下文生成器
         self.file_extension = os.path.splitext(self.file_path)[1]
         if self.file_extension not in ['.py', '.java']: 
             raise Exception("Unsupported file type")
         self.language = self.file_extension
+        self.context_generator = self.get_context_generator()
         
     def get_context_generator(self, type = "original"):
-        start = self.ostart if type == "original" else self.rstart
-        end = self.oend if type == "original" else self.rend
+        start = self.ostart
+        if type == "original":
+            end = self.oend
+        elif type == "revised":#由于只Apply了RevisionDiffHunk，所以不能简单按照rstart和rend来计算
+            plus_count = len([line for line in self.code_diff.split('\n') if line.startswith('+')])
+            minus_count = len([line for line in self.code_diff.split('\n') if line.startswith('-')])
+            end = self.oend + plus_count - minus_count
         language = self.language
         if language == '.py':
             self.parser = self.language_parsers[self.file_extension]

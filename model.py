@@ -1,6 +1,6 @@
 from time import sleep
 import json
-from openai import OpenAI
+# from openai import OpenAI
 from evaluation import myeval
 from utils.RequestModel import OpenAIUtils
 from utils.RequestLLMByApi import RequestLLMByApi

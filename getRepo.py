@@ -121,11 +121,11 @@ def clone_repository(repo_url, full_clone_path):
 
 def process_repositories():
     # Load the repositories from the JSON file
-    # try:
-    #     with open(output_dir, 'r') as f:
-    #         dublicate_repos = json.load(f)
-    # except:
-    #     dublicate_repos = []
+    try:
+        with open(output_dir, 'r') as f:
+            dublicate_repos = json.load(f)
+    except:
+        dublicate_repos = []
     # Load the repositories from the JSON file
     try:
         with open(source_dir, 'r') as f:
@@ -135,11 +135,11 @@ def process_repositories():
         repos = []
     
     # repos = list(set(repos) - set(dublicate_repos))
-    # repos = list(set(dublicate_repos) - set(repos))
-    # new_repos = get_top_repos(top_n=5000, language="java")
-    # repos = list(set(repos + new_repos))
-    # with open(output_dir, "w") as f:
-    #     json.dump(repos+dublicate_repos, f)
+    repos = list(set(dublicate_repos +repos))
+    new_repos = get_top_repos(top_n=5000, language="java")
+    repos = list(set(repos + new_repos))
+    with open(output_dir, "w") as f:
+        json.dump(repos+dublicate_repos, f)
     print(f"Repositories to process: {len(repos)}")
     
     clone_count = 0
@@ -152,8 +152,8 @@ def process_repositories():
             continue
 
         repo_size = get_repo_size(repo)
-        # if repo_size > 51200:  # More than 50MB in KB
-        #     continue
+        if repo_size > 153600:  # More than 150MB in KB
+            continue
 
         repo_url = f"https://githubfast.com/{repo}.git"
         full_clone_path = os.path.join(clone_dir, repo.split('/')[-1])

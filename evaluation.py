@@ -1,6 +1,6 @@
 import re
 
-import pymongo
+# import pymongo
 
 from evaluator.smooth_bleu import bleu_fromstr, my_bleu_fromstr
 

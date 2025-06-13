@@ -71,7 +71,7 @@ class RequestGitHub:
                         pass
                     else: 
                         traceback.print_exc()
-                        raise Exception(f"{e.response.status_code}")
+                        # raise Exception(f"{e.response.status_code}")
             time.sleep(600)
         raise Exception(f"url forbidden after 6 retries")
     

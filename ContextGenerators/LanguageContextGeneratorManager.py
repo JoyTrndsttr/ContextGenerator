@@ -1,4 +1,3 @@
-#getContextGenerator.py
 import os
 from psycopg2 import sql
 from tree_sitter import Language, Parser
@@ -31,6 +30,7 @@ class LanguageContextGenerator:
         }
         if not self.record: raise Exception("No record found")
         self.record_id, self.repo_name, self.code_diff, self.file_path, self.old, self.comment = self.record['_id'], self.record['repo'], self.record['diff_hunk'], self.record['path'], self.record['old'], self.record['comment']
+        self.abs_file_path = os.path.join(self.repo_base_path, self.repo_name.split('/')[1], self.file_path)
 
         #截取RevisionDiffHunk的行号
         try:
@@ -59,10 +59,12 @@ class LanguageContextGenerator:
         language = self.language
         if language == '.py':
             self.parser = self.language_parsers[self.file_extension]
-            self.tree,self.source_code = self.parse_file(self.file_path, self.parser)
+            self.tree, self.source_code = self.parse_file(self.file_path, self.parser)
             return PythonContextGenerator(self.parser, self.tree.root_node, self.source_code, self.file_path, self.code_diff, self.repo_name, (1, start - end))
         elif language == '.java':
-            return JavaContextGenerator(self.file_path, self.repo_name, (start, end))
+            self.parser = self.language_parsers[self.file_extension]
+            self.tree, self.source_code = self.parse_file(self.abs_file_path, self.parser)
+            return JavaContextGenerator(self.parser, self.tree.root_node, self.source_code, self.file_path, self.repo_name, (start, end))
         else:
             return None
     

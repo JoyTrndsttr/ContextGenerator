@@ -312,6 +312,18 @@ def CLBPP(record):
         print(f"Failed to restore commit {commit_hash} for ID {record_id}")
         raise Exception("Failed to restore commit")
 
+#
+def fill_record(record):
+    record_id, repo, path, commit_url, review_url = record["_id"], record["repo"], record["path"], record["commit_url"], record["review_url"]
+    repo_path = f"/data/DataLACP/wangke/recorebench/repo/repo/{repo.split('/')[1]}"
+    file_path = os.path.join(repo_path, path)
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            source_file = f.readlines()
+    except FileNotFoundError:
+        print(f"Error, file {file_path} not found")
+    
+
 # 主函数
 def main(id):
     pass

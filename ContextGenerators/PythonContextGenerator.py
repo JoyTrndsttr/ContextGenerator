@@ -48,6 +48,7 @@ class PythonContextGenerator:
         self.calls = [] #存储调用关系，元组形式(调用函数名，被调用函数名)
         self.file_paths = [] #检索范围
         self.file_paths.append(self.file_path)
+        self.context = self.getContext()
 
     def find_node_by_range(self, node):
         if not node: return None

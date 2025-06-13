@@ -41,7 +41,7 @@ def filter_record_by_new_identifier(record):
     # record["new"] = '\n'.join(record["new"].split('\n'))
     languageContextGenerator = LanguageContextGenerator(record)
     contextGenerator = languageContextGenerator.context_generator
-    unique_old_identifiers = contextGenerator.identifiers_names
+    unique_old_identifiers = contextGenerator.node_names
 
     # 应用ground truth补丁
     diff = record["diff_hunk"]
@@ -75,9 +75,10 @@ def filter_record_by_new_identifier(record):
         file.writelines(file_content)
 
     new_contextGenerator = languageContextGenerator.get_context_generator("revised")
-    new_identifiers = new_contextGenerator.identifiers_names
-    new_identifiers_definition_restrict = new_contextGenerator.identifiers_definition_strict
-    print(f"NIDS: {new_identifiers_definition_restrict}")
+    new_identifiers = new_contextGenerator.node_names
+    new_contextGenerator.search_context()
+    new_identifiers_definition_strict = new_contextGenerator.NIDS
+    print(f"NIDS: {new_identifiers_definition_strict}")
 
     new_added_identifiers = []
     new_added_identifiers_review_strict = []
@@ -85,7 +86,7 @@ def filter_record_by_new_identifier(record):
     for new_identifier in new_identifiers:
         if new_identifier not in unique_old_identifiers:
             if record["review"].find(new_identifier) == -1: new_added_identifiers_review_strict.append(new_identifier)
-            if new_identifier not in new_identifiers_definition_restrict:
+            if new_identifier in new_identifiers_definition_strict:
                 new_added_identifiers_definition_strict.append(new_identifier)
             new_added_identifiers.append(new_identifier)
     unique_new_added_identifiers = list(set(new_added_identifiers))
@@ -186,6 +187,7 @@ def process_repos(records, lock):
     print(f"Processing {repo}: {len(records)} records")
     keys = []
     for record in records:
+        # record = fill_records(record)
         key = check_dataset_valid(record)
         print(f"Processed {record['_id']}: {key}")
         keys.append(key)
@@ -201,30 +203,53 @@ def get_last_processed_id():
     except:
         return 0
 
-turn = 0
-while True:
-    turn += 1
-    print(f"Start for turn {turn}")
+def get_records(one_record_id = 0, continue_flag = True, repo = ""):
     with open(config['dataset_path'], 'r') as f:
         records = [json.loads(line) for line in f]
+        if one_record_id:
+            records = [record for record in records if record["_id"] == one_record_id]
+            if repo:
+                records = [record for record in records if record["repo"] == repo]
+        elif continue_flag:
+            last_processed_id = get_last_processed_id()
+            if last_processed_id >= len(records):
+                print(f"All records have been processed")
+                time.sleep(3600)
+                records = []
+            else: records = records[last_processed_id:]
+        return records
 
-        records = [record for record in records if record["_id"] == 10143] # 需要重点测试2528
-        process_repos(records, None)
-        break
+def test_one_record(one_record_id, repo = ""):
+    records = get_records(one_record_id, repo = repo)
+    print(f"Processing {one_record_id}: {len(records)} records")
+    if not records: 
+        print(f"No record found for {one_record_id}")
+        return
+    process_repos(records, None)
 
-        last_processed_id = get_last_processed_id()
-        if last_processed_id >= len(records):
-            print(f"All records have been processed")
-            time.sleep(3600)
-            continue
-        else: records = records[last_processed_id:]
-        repo_map = defaultdict(list)
-        for record in records:
-            repo_map[record["repo"]].append(record)
-        with mp.Pool(processes=13) as pool:
-            with Manager() as manager:
-                lock = manager.Lock()
-                tasks = [(records, lock) for records in repo_map.values()]
-                pool.starmap(process_repos, tasks)
-    print(f"End for turn {turn}")
-    time.sleep(3600)
+def process_records(continue_flag = True):
+    turn = 0
+    while True:
+        turn += 1
+        print(f"Start for turn {turn}")
+        records = get_records(continue_flag)
+        if records: 
+            repo_map = defaultdict(list)
+            for record in records:
+                repo_map[record["repo"]].append(record)
+            with mp.Pool(processes=13) as pool:
+                with Manager() as manager:
+                    lock = manager.Lock()
+                    tasks = [(records, lock) for records in repo_map.values()]
+                    pool.starmap(process_repos, tasks)
+        else:
+            print(f"No new record found")
+        print(f"End for turn {turn}")
+        time.sleep(3600)
+
+def main():
+    test_one_record(134, "dromara/dynamic-tp")
+    # process_records()
+
+if __name__ == '__main__':
+    main()

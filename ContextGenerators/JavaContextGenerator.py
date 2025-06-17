@@ -136,8 +136,8 @@ class JavaContextGenerator:
             method_full_name = callee_node.get("methodFullName", "Unresolved")
             if method_full_name == "Unresolved": return None
             definition = self.get_command_output(get_method_code(method_full_name))
-            if definition: code = definition[0].get("code", None)
-            return code
+            if definition: return definition[0].get("filename", None)
+            return None
         elif type == "field_access":
             field_access_text = representation
             field_access_infos = self.get_command_output(get_field_access_info(field_access_text))
@@ -146,8 +146,8 @@ class JavaContextGenerator:
             type_full_name = field_access_info.get("typeFullName", "Unresolved")
             if type_full_name == "Unresolved": return None
             definition = self.get_command_output(get_type_decl_info(type_full_name))
-            if definition: filename = definition[0].get("filename", None)
-            return filename
+            if definition: return definition[0].get("filename", None)
+            return None
         elif type == "type_identifier":
             type_name = representation
             locals = self.get_command_output(get_type_from_local(type_name))
@@ -155,8 +155,8 @@ class JavaContextGenerator:
             type_full_name = locals[0].get("typeFullName", "Unresolved")
             if type_full_name == "Unresolved": return None
             definition = self.get_command_output(get_type_decl_info(type_full_name))
-            if definition: filename = definition[0].get("filename", None)
-            return filename
+            if definition: return definition[0].get("filename", None)
+            return None
         elif type == "annotation":
             annotation_name = representation
             annotation_infos = self.get_command_output(get_annotation_info(annotation_name))
@@ -165,8 +165,8 @@ class JavaContextGenerator:
             full_name = annotation_info.get("fullName", "Unresolved")
             if full_name == "Unresolved": return None
             definition = self.get_command_output(get_type_decl_info(full_name))
-            if definition: filename = definition[0].get("filename", None)
-            return filename
+            if definition: return definition[0].get("filename", None)
+            return None
         else:
             print(f"Warning: Unconsidered type {type}")
             return None
@@ -207,21 +207,26 @@ class JavaContextGenerator:
                     context["method_call"][identifier_name] = "Unresolved"
                 else:
                     context["method_call"][identifier_name] = self.find_cross_file_code("call", method_call)
-            elif parent_node.type in ["annotation", "mark_annotation"]:
-                # annotation类型为通用注解，可能带参数； mark_annotation类型为标记注解，不带参数
+            elif parent_node.type in ["annotation", "marker_annotation"]:
+                # annotation类型为通用注解，可能带参数； marker_annotation类型为标记注解，不带参数
                 context["annotation"][identifier_name] = self.find_cross_file_code("annotation", identifier_name)
-            elif parent_node.type in ["variable_declarator", "formal_parameter", "constructor_declaration", "method_declaration"]:
+            elif parent_node.type in ["variable_declarator", "formal_parameter", "constructor_declaration", "class_declaration", "method_declaration", "resource", 
+                                      "package_declaration", "interface_declaration"]:
                 # variable_declarator包括局部变量和成员变量声明，形参，构造函数，成员方法声明的定义都会出现在OrignalCode范围内，不需要额外上下文
+                # resource包括try-with-resources语句中的资源声明, 类似于variable_declarator
                 pass
-            elif parent_node.type in ["assignment_expression", "argument_list", "switch_label", "binary_expression"]:
-                # 这些情况为variable的local use， 其数据流可能不位于OrignalCode范围内，需要重点考虑
-                context["variable"][identifier_name] = self.find_identifier_def_and_use(identifier_name)
             elif parent_node.type in ["field_access"]:
                 # field_access和method_invocation类似，需要重点考虑
                 # treesitter的field_access的text内容和joern的field_access的call节点的code一致
                 context["field_access"][identifier_name] = self.find_cross_file_code("field_access", parent_node.text.decode())
+            # else:
+            #     print(f"Warning: Unconsidered node type {parent_node.type}")
+            # elif parent_node.type in ["assignment_expression", "argument_list", "switch_label", "binary_expression", "lambda_expression", "catch_formal_parameter",
+            #                           "enhanced_for_statement", "inferred_parameters", "instanceof_expression", "update_expression"]:
+            #     # 这些情况为variable的local use， 其数据流可能不位于OrignalCode范围内，需要重点考虑
             else:
-                print(f"Warning: Unconsidered node type {parent_node.type}")
+                # 把其他所有情况都当做Variable分析
+                context["variable"][identifier_name] = self.find_identifier_def_and_use(identifier_name)
         self.context = context
         return context
 

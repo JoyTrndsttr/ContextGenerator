@@ -11,8 +11,15 @@ request_llm_by_api = RequestLLMByApi()
 # 文件路径
 # data_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/new_datasets_all_filtered_5.json"
 # output_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered.json"
-data_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/cleaned_datasets_with_analysis.json"
-output_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered_4.json"
+# data_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/cleaned_datasets_with_analysis.json"
+# output_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered_4.json"
+java_config = {
+    "data_file": "/data/DataLACP/wangke/recorebench/java/datasets/cleaned_datasets_with_analysis.json",
+    "output_file": "/data/DataLACP/wangke/recorebench/java/datasets/datasets_human_filtered.json"
+}
+config = java_config
+data_file = config.get("data_file")
+output_file = config.get("output_file")
 
 # 读取数据
 with open(data_file, "r", encoding="utf-8") as f:
@@ -110,7 +117,7 @@ def show_record():
 
     return progress, review, diff_hunk, review_position_line, record_NIDS, analysis, record_content
 
-def pass_record():
+def pass_record(selected_type):
     global index
     if index >= len(records_to_review):
         return "✅ 所有记录已评估完毕。", f"{len(passed_records)} / {len(records_to_review)}", "", "", "", "", ""
@@ -120,6 +127,7 @@ def pass_record():
     # old, new = split_diff(record["diff_hunk"])
     # record["old"] = '\n'.join(old)
     # record["new"] = '\n'.join(new)
+    record["type"] = selected_type
     
     with open(output_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -152,6 +160,12 @@ with gr.Blocks() as demo:
         diff_display = gr.Textbox(label="Code Diff", interactive=False, lines=5)
         review_position_display = gr.Textbox(label="Review Position", interactive=False, lines=2)
 
+        type_selector = gr.Dropdown(
+            label="Type",
+            choices=["General Context", "File Structure", "History Version", "Web Page", "Others"],
+            value="General Context"  # 默认值
+        )
+
         record_NIDS_display = gr.Textbox(label="NIDS", interactive=False, lines=1)
         analysis_display = gr.Textbox(label="Analysis", interactive=False, lines=5)
 
@@ -164,7 +178,7 @@ with gr.Blocks() as demo:
         record_display = gr.Code(label="Current Record", language="json", lines=20)
 
     
-    btn_pass.click(pass_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_NIDS_display, analysis_display, record_display])
+    btn_pass.click(pass_record, inputs=[type_selector], outputs=[progress_display, review_display, diff_display, review_position_display, record_NIDS_display, analysis_display, record_display])
     btn_reject.click(reject_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_NIDS_display, analysis_display, record_display])
     btn_rollback.click(rollback_record, outputs=[progress_display, review_display, diff_display, review_position_display, record_NIDS_display, analysis_display, record_display])
 

@@ -6,6 +6,13 @@ import traceback
 request_llm_by_api = RequestLLMByApi()
 data_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/cleaned_datasets.json"
 output_file = "/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/cleaned_datasets_with_analysis.json"
+java_config = {
+    "data_file": "/data/DataLACP/wangke/recorebench/java/datasets/cleaned_datasets.json",
+    "output_file": "/data/DataLACP/wangke/recorebench/java/datasets/cleaned_datasets_with_analysis.json"
+}
+config = java_config
+data_file = config.get("data_file")
+output_file = config.get("output_file")
 
 def get_analysis(record):
     try:

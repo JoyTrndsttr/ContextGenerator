@@ -12,14 +12,54 @@ requestGitHub = RequestGitHub()
 # 最大查找 parent commit 的次数
 MAX_PARENT_SEARCH = 100
 
+config = {
+    "base_repo_dir" : f"/data/DataLACP/wangke/recorebench/repo/repo/"
+}
+
 # 清空特定路径下所有文件
+# def clear(path):
+#     for filename in os.listdir(path):
+#         try:
+#             full_path = os.path.join(path, filename)
+#             if os.path.isfile(full_path) or os.path.islink(full_path):
+#                 os.remove(full_path)
+#             elif os.path.isdir(full_path):
+#                 shutil.rmtree(full_path)
+#         except Exception as e:
+#             print(f"Failed to delete {full_path}: {e}")
 def clear(path):
-    for filename in os.listdir(path):
-        full_path = os.path.join(path, filename)
-        if os.path.isfile(full_path) or os.path.islink(full_path):
-            os.remove(full_path)
-        elif os.path.isdir(full_path):
-            shutil.rmtree(full_path)
+    try:
+        # 获取所有子文件夹，并附上创建时间
+        folders = [
+            (os.path.join(path, d), os.path.getctime(os.path.join(path, d)))
+            for d in os.listdir(path)
+            if os.path.isdir(os.path.join(path, d))
+        ]
+
+        # 按创建时间降序排列（新 -> 旧）
+        folders.sort(key=lambda x: x[1], reverse=True)
+
+        # 多余的（第21个及之后的）删除
+        for folder_path, _ in folders[20:]:
+            try:
+                shutil.rmtree(folder_path)
+                print(f"Deleted old folder: {folder_path}")
+            except Exception as e:
+                print(f"Failed to delete {folder_path}: {e}")
+
+    except Exception as e:
+        print(f"Failed to clear path {path}: {e}")
+
+# 重置repo状态
+def reset_repo(repo):
+    repo_path = config["base_repo_dir"] + repo.split('/')[1]
+    try:
+        if os.path.exists(repo_path):
+            subprocess.run(["rm", "-f", ".git/index.lock"], cwd=repo_path, check=True)
+            subprocess.run(["git", "reset", "--hard"], cwd=repo_path, check=True)
+    except Exception as e:
+        print(f"Failed to reset repo {repo}: {e}")
+
 
 #获取Json文件中的信息
 def get_info_from_jsonfile(file_path, id):

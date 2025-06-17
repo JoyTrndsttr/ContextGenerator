@@ -1,7 +1,7 @@
 import json
 import model
 from ContextGenerators.LanguageContextGeneratorManager import LanguageContextGenerator
-from getProjectCommitState import CLBPP, get_commit_details, clear
+from getProjectCommitState import CLBPP, get_commit_details, clear, reset_repo
 import re
 import traceback
 import time
@@ -142,12 +142,13 @@ def check_dataset_valid(record):
         if not pre_filtered_record: 
             print(f"No new identifier found in {record['_id']}")
             return "No_new_identifier_found"
-        llm_filtered_record = filtered_by_relationship_between_diff_and_review_with_LLMs(pre_filtered_record)
-        if not llm_filtered_record: 
-            print(f"Low quality sample for {record['_id']}")
-            return "Low_quality_sample"
+        # llm_filtered_record = filtered_by_relationship_between_diff_and_review_with_LLMs(pre_filtered_record)
+        # if not llm_filtered_record: 
+        #     print(f"Low quality sample for {record['_id']}")
+        #     return "Low_quality_sample"
         with open(config['output_path'], 'a') as f0:
-            f0.write(json.dumps(llm_filtered_record, ensure_ascii=False) + '\n')
+            # f0.write(json.dumps(llm_filtered_record, ensure_ascii=False) + '\n')
+            f0.write(json.dumps(pre_filtered_record, ensure_ascii=False) + '\n')
         print(f"Saved {record['_id']}")
         return "Successful_processed"
     except Exception as e:
@@ -155,7 +156,8 @@ def check_dataset_valid(record):
         traceback.print_exc()
         try:
             key = e.args[0]
-            return key
+            if key.startswith("Timeout exceeded."): return "Timeout_exceeded"
+            else : return key
         except: return "Others"
 
 def store_to_log_file(keys, lock):
@@ -181,12 +183,14 @@ def store_to_log_file(keys, lock):
     
 def process_repos(records, lock):
     repo = records[0]["repo"]
-    #清空缓存
-    cache_dir = config["cache_dir"]
-    clear(cache_dir)
     print(f"Processing {repo}: {len(records)} records")
+    reset_repo(repo)
     keys = []
-    for record in records:
+    for i, record in enumerate(records):
+        if i % 100 == 0: 
+            #清空缓存
+            cache_dir = config["cache_dir"]
+            clear(cache_dir)
         # record = fill_records(record)
         key = check_dataset_valid(record)
         print(f"Processed {record['_id']}: {key}")
@@ -227,12 +231,18 @@ def test_one_record(one_record_id, repo = ""):
         return
     process_repos(records, None)
 
+def process_records_single_process(continue_flag = True):
+    records = get_records(continue_flag = continue_flag)
+    with Manager() as manager:
+        lock = manager.Lock()
+        if records: process_repos(records, lock)
+
 def process_records(continue_flag = True):
     turn = 0
     while True:
         turn += 1
         print(f"Start for turn {turn}")
-        records = get_records(continue_flag)
+        records = get_records(continue_flag = continue_flag)
         if records: 
             repo_map = defaultdict(list)
             for record in records:
@@ -248,8 +258,9 @@ def process_records(continue_flag = True):
         time.sleep(3600)
 
 def main():
-    test_one_record(134, "dromara/dynamic-tp")
-    # process_records()
+    # test_one_record(1651, "traccar/traccar")
+    process_records()
+    # process_records_single_process(continue_flag = True)
 
 if __name__ == '__main__':
     main()

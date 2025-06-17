@@ -1043,3 +1043,46 @@ cpg.call.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translat
 cpg.call.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).filter(call => call.code == "stoneCuttingData.getIngredient().getOptions().length").l
 
 /data/DataLACP/wangke/recorebench/repo/repo/dynamic-tp/core/src/main/java/com/dtp/core/context/BaseNotifyCtx.java
+
+/data/DataLACP/wangke/recorebench/repo/repo/zuul/zuul-core/src/main/java/com/netflix/zuul/netty/filter/BaseZuulFilterRunner.java
+'formal_parameter'
+
+
+/data/DataLACP/wangke/recorebench/repo/repo/zuul/zuul-core/src/main/java/com/netflix/zuul/netty/filter/BaseZuulFilterRunner.java
+/data/DataLACP/wangke/recorebench/repo/repo/traccar/src/main/java/org/traccar/protocol/SuntechProtocolDecoder.java
+
+
+
+
+importCpg("/data/DataLACP/wangke/recorebench/workspace/Geyser/cpg.bin.zip")
+/data/DataLACP/wangke/recorebench/repo/repo/Geyser/core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java
+
+
+cpg.identifier.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).filter(identifier => identifier.name == "recipeTypes").l
+cpg.local.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).filter(identifier => identifier.name == "recipeTypes").headOption
+
+def source = cpg.identifier.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).filter(identifier => identifier.name == "recipeTypes").l
+def sink = cpg.local.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).filter(identifier => identifier.name == "recipeTypes").l
+sink.reachableByFlows(source).p
+
+def source = cpg.identifier.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).filter(identifier => identifier.name == "recipeTypes").head
+def sink = cpg.identifier.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).filter(identifier => identifier.name == "recipeTypes").l(1)
+sink.reachableByFlows(source).p
+
+def source = cpg.identifier.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).filter(identifier => identifier.name == "recipeTypes").l
+def sink = cpg.identifier.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).filter(identifier => identifier.name == "recipeTypes").l
+sink.reachableByFlows(source).p
+
+def source = cpg.identifier.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).filter(identifier => identifier.name == "craftingDataPacket").l
+def sink = cpg.identifier.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).filter(identifier => identifier.name == "craftingDataPacket").l
+sink.reachableByFlows(source).p
+
+def sink = cpg.methodParameterIn.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).filter(identifier => identifier.name == "session").lineNumber(88).l
+def source = cpg.identifier.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).filter(identifier => identifier.name == "session").lineNumber(93).l
+sink.reachableByFlows(source).p
+
+cpg.methodParameterIn.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).filter(identifier => identifier.name == "session").l
+cpg.all.label("param").l
+
+
+cpg.method.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).lineNumber(407).l

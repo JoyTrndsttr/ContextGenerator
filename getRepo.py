@@ -133,9 +133,15 @@ def process_repositories():
             repos = list(set([record['repo'] for record in records]))
     except:
         repos = []
+    # Load the repositories from the Failed JSON file
+    try:
+        with open(failed_repo_dir, 'r') as f:
+            failed_repos = json.load(f)
+    except:
+        failed_repos = []
     
     # repos = list(set(repos) - set(dublicate_repos))
-    repos = list(set(dublicate_repos +repos))
+    repos = list(set(dublicate_repos + repos + failed_repos))
     new_repos = get_top_repos(top_n=5000, language="java")
     repos = list(set(repos + new_repos))
     with open(output_dir, "w") as f:
@@ -152,7 +158,7 @@ def process_repositories():
             continue
 
         repo_size = get_repo_size(repo)
-        if repo_size > 153600:  # More than 150MB in KB
+        if repo_size > 409600:  # More than 400MB in KB
             continue
 
         repo_url = f"https://githubfast.com/{repo}.git"

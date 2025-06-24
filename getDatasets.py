@@ -235,7 +235,8 @@ def main():
     for repo in repos:
         if repo in repo_latest:
             id = repo_latest[repo]
-            pairs.append((repo, id))
+            if id > 100:
+                pairs.append((repo, id))
         else:
             pairs.append((repo, 1000000))
     

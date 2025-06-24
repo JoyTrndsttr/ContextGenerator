@@ -17,7 +17,14 @@ java_config = {
     "data_file": "/data/DataLACP/wangke/recorebench/java/datasets/cleaned_datasets_with_analysis.json",
     "output_file": "/data/DataLACP/wangke/recorebench/java/datasets/datasets_human_filtered.json"
 }
-config = java_config
+
+python_classification_config = {
+    "data_file": "/data/DataLACP/wangke/recorebench/python/datasets/datasets_human_filtered_4.json",
+    "output_file": "/data/DataLACP/wangke/recorebench/python/datasets/datasets_human_classified.json"
+}
+config = python_classification_config
+
+# config = java_config
 data_file = config.get("data_file")
 output_file = config.get("output_file")
 
@@ -46,7 +53,8 @@ try:
 except:
     index = 0
 records_to_review = all_records[index:]
-records_to_review = [r for r in records_to_review if r.get("analysis_by_deepseek_r1",None) and not r.get("analysis_by_deepseek_r1").startswith("不合格")]
+# records_to_review = [r for r in records_to_review if r.get("analysis_by_deepseek_r1",None) and not r.get("analysis_by_deepseek_r1").startswith("不合格")]
+# records_to_review = [r for r in records_to_review if r.get("analysis_by_deepseek_r1",None) and not r.get("analysis_by_deepseek_r1").split('\n')[0].find("不合格")>=0]
 
 # # 使用 index 来跟踪当前展示位置
 # records_to_review = [r for r in all_records if r.get("_id", 0) > last_passed_id]

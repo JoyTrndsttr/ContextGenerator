@@ -1086,3 +1086,15 @@ cpg.all.label("param").l
 
 
 cpg.method.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).lineNumber(407).l
+
+cpg.method.where(_.file.nameExact("core/src/main/java/org/geysermc/geyser/translator/protocol/java/JavaUpdateRecipesTranslator.java")).lineNumber(407).l
+
+
+
+/data/DataLACP/wangke/recorebench/repo/repo/resilience4j/resilience4j-framework-common/src/main/java/io/github/resilience4j/common/bulkhead/configuration/ThreadPoolBulkheadConfigurationProperties.java
+importCpg("/data/DataLACP/wangke/recorebench/workspace/resilience4j/cpg.bin.zip")
+cpg.file.nameExact("resilience4j-framework-common/src/main/java/io/github/resilience4j/common/bulkhead/configuration/ThreadPoolBulkheadConfigurationProperties.java").l
+
+importCpg("/data/DataLACP/wangke/recorebench/workspace/graphql-java/cpg.bin.zip")
+/data/DataLACP/wangke/recorebench/repo/repo/graphql-java/src/main/java/graphql/schema/GraphQLInputSchemaElement.java
+cpg.file.nameExact("src/main/java/graphql/schema/GraphQLInputSchemaElement.java").l

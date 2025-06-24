@@ -106,6 +106,13 @@ class JavaContextGenerator:
                     identifier_context.append(f"line {line_number + 1}: {line}")
         return identifier_context
 
+    def get_source_code_and_processed_code(self):
+        # 获取文件处理前和处理后代码，仅做调试用
+        OUTPUT_FORMAT = f".toJsonPretty #> \"{self.tmp_output_path}\""
+        def get_file():
+            return f"cpg.file.nameExact(\"{self.rel_file_path}\").headOption{OUTPUT_FORMAT}"
+        return self.source_code, self.get_command_output(get_file())
+    
     def find_cross_file_code(self, type, representation):
         # 在当前文件中使用Joern寻找(caller, callee)中callee的ast节点，判断其第一个children是否为caller
         OUTPUT_FORMAT = f".toJsonPretty #> \"{self.tmp_output_path}\""

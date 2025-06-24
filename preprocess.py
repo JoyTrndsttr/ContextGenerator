@@ -134,6 +134,7 @@ def filtered_by_huristics_approaches(record):
 
 def check_dataset_valid(record):
     try:
+        print(f"Checking {record['repo']}: {record['_id']}")
         huristically_filtered_record = filtered_by_huristics_approaches(record)
         if not huristically_filtered_record: 
             print(f"No strictly added identifier found in {record['_id']}")
@@ -187,7 +188,7 @@ def process_repos(records, lock):
     reset_repo(repo)
     keys = []
     for i, record in enumerate(records):
-        if i % 100 == 0: 
+        if i % 20 == 0: 
             #清空缓存
             cache_dir = config["cache_dir"]
             clear(cache_dir)
@@ -207,6 +208,19 @@ def get_last_processed_id():
     except:
         return 0
 
+def get_each_last_processed_id_by_repo_name():
+    #适用于多线程处理，根据repos多进程处理会打乱处理顺序
+    with open(config["output_path"], "r") as f:
+        preprocessed_datasets = [json.loads(line) for line in f]
+        repos = {}
+        for record in preprocessed_datasets:
+            if repos.get(record["repo"], None):
+                if record["_id"] > repos[record["repo"]]:
+                    repos[record["repo"]] = record["_id"]
+            else:
+                repos[record["repo"]] = record["_id"]
+    return repos
+
 def get_records(one_record_id = 0, continue_flag = True, repo = ""):
     with open(config['dataset_path'], 'r') as f:
         records = [json.loads(line) for line in f]
@@ -215,12 +229,14 @@ def get_records(one_record_id = 0, continue_flag = True, repo = ""):
             if repo:
                 records = [record for record in records if record["repo"] == repo]
         elif continue_flag:
-            last_processed_id = get_last_processed_id()
-            if last_processed_id >= len(records):
-                print(f"All records have been processed")
-                time.sleep(3600)
-                records = []
-            else: records = records[last_processed_id:]
+            repos_last_id = get_each_last_processed_id_by_repo_name()
+            records = [record for record in records if record["repo"] not in repos_last_id or record["_id"] > repos_last_id[record["repo"]]]
+            # last_processed_id = get_last_processed_id()
+            # if last_processed_id >= len(records):
+            #     print(f"All records have been processed")
+            #     time.sleep(3600)
+            #     records = []
+            # else: records = records[last_processed_id:]
         return records
 
 def test_one_record(one_record_id, repo = ""):
@@ -247,7 +263,8 @@ def process_records(continue_flag = True):
             repo_map = defaultdict(list)
             for record in records:
                 repo_map[record["repo"]].append(record)
-            with mp.Pool(processes=13) as pool:
+            repo_map = dict(sorted(repo_map.items(), key=lambda item: len(item[1]), reverse=True))
+            with mp.Pool(processes=8) as pool:
                 with Manager() as manager:
                     lock = manager.Lock()
                     tasks = [(records, lock) for records in repo_map.values()]

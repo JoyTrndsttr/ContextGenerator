@@ -36,14 +36,14 @@ def store_record(record):
         print(f"Saved record {id}")
 
 print("正在等待")
-# time.sleep(7200)
+time.sleep(7200)
 print("开始处理")
 
 with open(data_file, "r", encoding="utf-8") as f:
     records = [json.loads(line) for line in f]
     last_saved_id = 0
     for i, record in enumerate(records):
-        if record["_id"] == 128081:
+        if record["_id"] == 8485:
             last_saved_id = i
             break
     records = records[last_saved_id+1:]

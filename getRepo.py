@@ -6,37 +6,30 @@ import time
 import json
 import os
 import subprocess
+from utils.RequestGitHub import RequestGitHub
 
 # 加载GitHub访问令牌
-github_tokens = json.load(open("/home/wangke/model/ContextGenerator/settings.json", encoding='utf-8'))["github_tokens"]
-token_index = 0
-GITHUB_TOKEN = github_tokens[token_index]
+requestGitHub = RequestGitHub()
 clone_dir = r'/data/DataLACP/wangke/recorebench/repo/repo'
-source_dir = "/mnt/ssd2/wangke/CR_data/dataset/pre/cacr_java.json"
-output_dir = "/data/DataLACP/wangke/recorebench/java/process/repos_java.json"
-success_repo_dir = "/data/DataLACP/wangke/recorebench/java/process/success_repos_2_java.json"
-failed_repo_dir = "/data/DataLACP/wangke/recorebench/java/process/failed_repos_2_java.json"
 
-def update_github_token():
-    global GITHUB_TOKEN
-    global token_index
-    token_index = (token_index + 1) % len(github_tokens)
-    GITHUB_TOKEN = github_tokens[token_index]
+java_config = {
+    "source_dir" : "/mnt/ssd2/wangke/CR_data/dataset/pre/cacr_java.json",
+    "output_dir" : "/data/DataLACP/wangke/recorebench/java/process/repos_java.json",
+    "success_repo_dir" : "/data/DataLACP/wangke/recorebench/java/process/success_repos_2_java.json",
+    "failed_repo_dir" : "/data/DataLACP/wangke/recorebench/java/process/failed_repos_2_java.json"
+}
+js_config = {
+    "source_dir" : "/mnt/ssd2/wangke/CR_data/dataset/pre/cacr_js.json",
+    "output_dir" : "/data/DataLACP/wangke/recorebench/js/process/repos_js.json",
+    "success_repo_dir" : "/data/DataLACP/wangke/recorebench/js/process/success_repos_2_js.json",
+    "failed_repo_dir" : "/data/DataLACP/wangke/recorebench/js/process/failed_repos_2_js.json"
+}
 
-def fetch_data(url, params, session):
-    """ 使用给定的session发送请求，如果请求失败，则更换token重试 """
-    while True:
-        try:
-            response = session.get(url, params=params)
-            response.raise_for_status()
-            return response.json(), response.links
-        except requests.exceptions.HTTPError as e:
-            if response.status_code == 403 or response.status_code == 422:  # API限额或参数问题
-                update_github_token()
-                session.headers.update({"Authorization": f"token {GITHUB_TOKEN}"})
-                time.sleep(1)  # 等待一秒再重试
-            else:
-                raise e
+config = js_config
+source_dir = config["source_dir"]
+output_dir = config["output_dir"]
+success_repo_dir = config["success_repo_dir"]
+failed_repo_dir = config["failed_repo_dir"]
 
 def get_top_repos(top_n=5000, language="java"):
     url = "https://api.github.com/search/repositories"
@@ -46,21 +39,10 @@ def get_top_repos(top_n=5000, language="java"):
         "order": "desc",
         "per_page": 100
     }
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
-
-    # 设置重试策略
-    retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
-    adapter = HTTPAdapter(max_retries=retries)
-    session = requests.Session()
-    session.mount('https://', adapter)
-    session.headers.update(headers)
-
     repos = []
     while len(repos) < top_n:
-        data, links = fetch_data(url, query_params, session)
+        response = requestGitHub.get_response(url, params=query_params)
+        data, links = response.json(), response.links
         for item in data["items"]:
             repo_name = f"{item['owner']['login']}/{item['name']}"
             repos.append(repo_name)
@@ -75,24 +57,9 @@ def get_top_repos(top_n=5000, language="java"):
 
     return repos
 
-def requests_retry_session(retries=5, backoff_factor=0.3, status_forcelist=(500, 502, 504), session=None):
-    session = session or requests.Session()
-    retry = Retry(
-        total=retries,
-        read=retries,
-        connect=retries,
-        backoff_factor=backoff_factor,
-        status_forcelist=status_forcelist,
-    )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    return session
-
 def get_pull_request_count(repo):
     url = f"https://api.github.com/repos/{repo}/pulls?state=all&per_page=1"
-    headers = {'Authorization': f'token {GITHUB_TOKEN}'}
-    response = requests_retry_session().get(url, headers=headers)
+    response = requestGitHub.get_response(url)
     if response.status_code == 200:
         pr_count = int(response.headers.get('link', '').split(",")[1].split("page=")[2].split(">")[0]) if 'link' in response.headers else 0
         return pr_count
@@ -100,8 +67,7 @@ def get_pull_request_count(repo):
 
 def get_repo_size(repo):
     url = f"https://api.github.com/repos/{repo}"
-    headers = {'Authorization': f'token {GITHUB_TOKEN}'}
-    response = requests_retry_session().get(url, headers=headers)
+    response = requestGitHub.get_response(url)
     if response.status_code == 200:
         size = response.json().get('size', 0)  # Size is in KB
         return size
@@ -142,7 +108,7 @@ def process_repositories():
     
     # repos = list(set(repos) - set(dublicate_repos))
     repos = list(set(dublicate_repos + repos + failed_repos))
-    new_repos = get_top_repos(top_n=5000, language="java")
+    new_repos = get_top_repos(top_n=5000, language="js")
     repos = list(set(repos + new_repos))
     with open(output_dir, "w") as f:
         json.dump(repos+dublicate_repos, f)
@@ -153,12 +119,18 @@ def process_repositories():
         if os.path.exists(os.path.join(clone_dir, repo.split('/')[-1])):
             continue
 
-        pr_count = get_pull_request_count(repo)
-        if pr_count <= 50:
-            continue
+        try:
+            pr_count = get_pull_request_count(repo)
+            if pr_count <= 50:
+                continue
 
-        repo_size = get_repo_size(repo)
-        if repo_size > 409600:  # More than 400MB in KB
+            repo_size = get_repo_size(repo)
+            if repo_size > 409600:  # More than 400MB in KB
+                continue
+        except Exception as e:
+            print(f"Error getting pull request count or repo size for {repo}: {e}")
+            with open(failed_repo_dir, "a") as f:
+                f.write(f"{repo}\n")
             continue
 
         repo_url = f"https://githubfast.com/{repo}.git"

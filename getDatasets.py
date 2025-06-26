@@ -12,12 +12,27 @@ import re
 
 # 用来控制获取的GitHub token
 requestGitHub = RequestGitHub()
-lang = "java"
 
-repo_dir1 = "/data/DataLACP/wangke/recorebench/java/process/success_repos_2_java.json"
-# repo_dir2 = "/mnt/ssd2/wangke/dataset/AgentRefiner/datasets/success_repos_2.json"
-output_dir = "/data/DataLACP/wangke/recorebench/java/datasets/new_datasets_java.json"
-log_dir = "/data/DataLACP/wangke/recorebench/java/log/getDatasets.txt"
+
+java_config = {
+    "lang": "java",
+    "repo_dir1": "/data/DataLACP/wangke/recorebench/java/process/success_repos_2_java.json",
+    "output_dir": "/data/DataLACP/wangke/recorebench/java/datasets/new_datasets_java.json",
+    "log_dir": "/data/DataLACP/wangke/recorebench/java/log/getDatasets.txt",
+}
+js_config = {
+    "lang": "js",
+    "repo_dir1": "/data/DataLACP/wangke/recorebench/js/process/success_repos_2_js.json",
+    "output_dir": "/data/DataLACP/wangke/recorebench/js/datasets/new_datasets_js.json",
+    "log_dir": "/data/DataLACP/wangke/recorebench/js/log/getDatasets.txt",
+}
+
+config = js_config
+
+lang = config["lang"]
+repo_dir1 = config["repo_dir1"]
+output_dir = config["output_dir"]
+log_dir = config["log_dir"]
 dataset_id = Value('i', 0)
 dataset_lock = Lock()
 

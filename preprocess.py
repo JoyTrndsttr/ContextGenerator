@@ -9,14 +9,25 @@ from multiprocessing import Manager
 import multiprocessing as mp
 from collections import defaultdict
 import os
+import random
 
-config = {
+java_config = {
     "dataset_path": "/data/DataLACP/wangke/recorebench/java/datasets/new_datasets_java.json",
     "output_path": "/data/DataLACP/wangke/recorebench/java/datasets/preprocessed_datasets.json",
     "log_path": "/data/DataLACP/wangke/recorebench/java/log/log1.json",
     "base_dir": "/data/DataLACP/wangke/recorebench/repo/repo/",
     "cache_dir": "/home/wangke/model/ContextGenerator/workspace/"
 }
+
+js_config = {
+    "dataset_path": "/data/DataLACP/wangke/recorebench/js/datasets/new_datasets_js.json",
+    "output_path": "/data/DataLACP/wangke/recorebench/js/datasets/preprocessed_datasets.json",
+    "log_path": "/data/DataLACP/wangke/recorebench/js/log/log1.json",
+    "base_dir": "/data/DataLACP/wangke/recorebench/repo/repo/",
+    "cache_dir": "/home/wangke/model/ContextGenerator/workspace/"
+}
+
+config = js_config
 
 def get_json_value_number(str, key):
     try:
@@ -238,6 +249,11 @@ def get_records(one_record_id = 0, continue_flag = True, repo = ""):
             #     records = []
             # else: records = records[last_processed_id:]
         return records
+
+def get_random_record():
+    with open(config['dataset_path'], 'r') as f:
+        records = [json.loads(line) for line in f]
+        return [random.choice(records)]
 
 def test_one_record(one_record_id, repo = ""):
     records = get_records(one_record_id, repo = repo)

@@ -12,6 +12,7 @@ import tree_sitter_ruby as tsruby
 import re
 from ContextGenerators.PythonContextGenerator import PythonContextGenerator
 from ContextGenerators.JavaContextGenerator import JavaContextGenerator
+from ContextGenerators.JsContextGenerator import JsContextGenerator
 
 class LanguageContextGenerator:
     def __init__(self, record):
@@ -43,7 +44,7 @@ class LanguageContextGenerator:
 
         #获取文件后缀并加载对应的语言解析器和上下文生成器
         self.file_extension = os.path.splitext(self.file_path)[1]
-        if self.file_extension not in ['.py', '.java']: 
+        if self.file_extension not in ['.py', '.java', ".js"]: 
             raise Exception("Unsupported file type")
         self.language = self.file_extension
         self.context_generator = self.get_context_generator()
@@ -65,6 +66,10 @@ class LanguageContextGenerator:
             self.parser = self.language_parsers[self.file_extension]
             self.tree, self.source_code = self.parse_file(self.abs_file_path, self.parser)
             return JavaContextGenerator(self.parser, self.tree.root_node, self.source_code, self.file_path, self.repo_name, (start, end))
+        elif language == '.js':
+            self.parser = self.language_parsers[self.file_extension]
+            self.tree, self.source_code = self.parse_file(self.abs_file_path, self.parser)
+            return JsContextGenerator(self.parser, self.tree.root_node, self.source_code, self.file_path, self.repo_name, (start, end))
         else:
             return None
     

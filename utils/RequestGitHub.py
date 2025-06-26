@@ -55,12 +55,12 @@ class RequestGitHub:
         session.mount('https://', adapter)
         return session
     
-    def get_response(self, url):
+    def get_response(self, url, params=None):
         for j in range(6):
             for i in range(len(self.valid_github_tokens)):
                 try:
                     headers = {'Authorization': f'token {self.next_github_token()}'}
-                    response = self.requests_retry_session().get(url, headers=headers, timeout=10)
+                    response = self.requests_retry_session().get(url, headers=headers, params=params, timeout=10)
                     response.raise_for_status()
                     return response
                 except Exception as e:

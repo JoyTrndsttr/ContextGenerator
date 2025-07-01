@@ -1,7 +1,6 @@
 import json
 import requests
 from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
 import time
 import json
 import os
@@ -125,7 +124,7 @@ def process_repositories():
                 continue
 
             repo_size = get_repo_size(repo)
-            if repo_size > 409600:  # More than 400MB in KB
+            if repo_size > 512000:  # More than 400MB in KB
                 continue
         except Exception as e:
             print(f"Error getting pull request count or repo size for {repo}: {e}")

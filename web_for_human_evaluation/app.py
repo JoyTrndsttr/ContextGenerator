@@ -22,7 +22,13 @@ python_classification_config = {
     "data_file": "/data/DataLACP/wangke/recorebench/python/datasets/datasets_human_filtered_4.json",
     "output_file": "/data/DataLACP/wangke/recorebench/python/datasets/datasets_human_classified.json"
 }
-config = python_classification_config
+
+js_config = {
+    "data_file": "/data/DataLACP/wangke/recorebench/js/datasets/cleaned_datasets_with_analysis.json",
+    "output_file": "/data/DataLACP/wangke/recorebench/js/datasets/datasets_human_filtered.json"
+}
+
+config = js_config
 
 # config = java_config
 data_file = config.get("data_file")

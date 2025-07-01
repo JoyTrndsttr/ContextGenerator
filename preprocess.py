@@ -20,9 +20,9 @@ java_config = {
 }
 
 js_config = {
-    "dataset_path": "/data/DataLACP/wangke/recorebench/js/datasets/new_datasets_js.json",
+    "dataset_path": "/data/DataLACP/wangke/recorebench/js/datasets/new_datasets_js_reordered.json",
     "output_path": "/data/DataLACP/wangke/recorebench/js/datasets/preprocessed_datasets.json",
-    "log_path": "/data/DataLACP/wangke/recorebench/js/log/log1.json",
+    "log_path": "/data/DataLACP/wangke/recorebench/js/log/log2.json",
     "base_dir": "/data/DataLACP/wangke/recorebench/repo/repo/",
     "cache_dir": "/home/wangke/model/ContextGenerator/workspace/"
 }
@@ -221,6 +221,12 @@ def get_last_processed_id():
 
 def get_each_last_processed_id_by_repo_name():
     #适用于多线程处理，根据repos多进程处理会打乱处理顺序
+    try:
+        with open(config["output_path"], "r") as f:
+            pass
+    except:
+        with open(config["output_path"], "w") as f:
+            pass
     with open(config["output_path"], "r") as f:
         preprocessed_datasets = [json.loads(line) for line in f]
         repos = {}
@@ -263,6 +269,14 @@ def test_one_record(one_record_id, repo = ""):
         return
     process_repos(records, None)
 
+def test_random_record():
+    records = get_random_record()
+    print(f"Processing {records[0]['_id']}: {len(records)} records")
+    if not records: 
+        print(f"No record found for {records[0]['_id']}")
+        return
+    process_repos(records, None)
+
 def process_records_single_process(continue_flag = True):
     records = get_records(continue_flag = continue_flag)
     with Manager() as manager:
@@ -280,7 +294,7 @@ def process_records(continue_flag = True):
             for record in records:
                 repo_map[record["repo"]].append(record)
             repo_map = dict(sorted(repo_map.items(), key=lambda item: len(item[1]), reverse=True))
-            with mp.Pool(processes=8) as pool:
+            with mp.Pool(processes=10) as pool:
                 with Manager() as manager:
                     lock = manager.Lock()
                     tasks = [(records, lock) for records in repo_map.values()]
@@ -292,6 +306,8 @@ def process_records(continue_flag = True):
 
 def main():
     # test_one_record(1651, "traccar/traccar")
+    # test_one_record(22690, "prettier/prettier")
+    # test_random_record()
     process_records()
     # process_records_single_process(continue_flag = True)
 

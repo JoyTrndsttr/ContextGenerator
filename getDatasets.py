@@ -1,18 +1,12 @@
 import json
-import requests
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
 from utils.RequestGitHub import RequestGitHub
 import multiprocessing as mp
 from multiprocessing import Value, Lock
-import time
-import os
 import traceback
 import re
 
 # 用来控制获取的GitHub token
 requestGitHub = RequestGitHub()
-
 
 java_config = {
     "lang": "java",
@@ -63,38 +57,6 @@ def get_datasample(diff, review, repo, commit_url, review_url, comment_info):
         "review_url": review_url,
         "comment": comment_info
     }
-
-def requests_retry_session(
-    retries=5,
-    backoff_factor=0.3,
-    status_forcelist=(500, 502, 504),
-    session=None,
-):
-    session = session or requests.Session()
-    retry = Retry(
-        total=retries,
-        read=retries,
-        connect=retries,
-        backoff_factor=backoff_factor,
-        status_forcelist=status_forcelist,
-    )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    return session
-
-def get_content(url, token):
-    for i in range(6):
-        try:
-            headers = {'Authorization': f'token {token}'}
-            response = requests_retry_session().get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            print(f"Error getting {url}: {e}")
-            traceback.print_exc()
-            time.sleep(600)
-    raise Exception(f"Failed to get {url} after 6 retries")
 
 def get_pulls(repo, pull_id = 1000000):
     print(f"processing repo {repo}")

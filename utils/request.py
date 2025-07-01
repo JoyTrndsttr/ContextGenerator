@@ -10,7 +10,11 @@ java_config = {
     "data_file": "/data/DataLACP/wangke/recorebench/java/datasets/cleaned_datasets.json",
     "output_file": "/data/DataLACP/wangke/recorebench/java/datasets/cleaned_datasets_with_analysis.json"
 }
-config = java_config
+js_config = {
+    "data_file": "/data/DataLACP/wangke/recorebench/js/datasets/cleaned_datasets.json",
+    "output_file": "/data/DataLACP/wangke/recorebench/js/datasets/cleaned_datasets_with_analysis.json"
+}
+config = js_config
 data_file = config.get("data_file")
 output_file = config.get("output_file")
 
@@ -36,7 +40,7 @@ def store_record(record):
         print(f"Saved record {id}")
 
 print("正在等待")
-time.sleep(7200)
+time.sleep(4800)
 print("开始处理")
 
 with open(data_file, "r", encoding="utf-8") as f:

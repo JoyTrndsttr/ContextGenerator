@@ -37,8 +37,8 @@ class LanguageContextGenerator:
         try:
             revision_diff_hunk_lines = self.code_diff.split('\n')[0]
             original_code_start, orginal_code_scope, revised_code_start, revised_code_scope = re.findall(r'@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@', revision_diff_hunk_lines)[0]
-            self.ostart, self.oend = int(original_code_start), int(original_code_start) + int(orginal_code_scope)
-            self.rstart, self.rend = int(revised_code_start), int(revised_code_start) + int(revised_code_scope)
+            self.ostart, self.oend = int(original_code_start), int(original_code_start) + int(orginal_code_scope) - 1
+            self.rstart, self.rend = int(revised_code_start), int(revised_code_start) + int(revised_code_scope) - 1
         except:
             raise Exception("Invalid code_diff format")
 

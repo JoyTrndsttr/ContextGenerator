@@ -19,7 +19,7 @@ class JsContextGenerator:
         self.workspace_path = f"{self.workspace}/cpg.bin.zip"
         self.tmp_output_path = f"{self.workspace}/tmp.json"
         self.all_types = ["method", "typeDecl", "block", "call", "identifier", "local", "methodParameterIn", "methodParameterOut", "methodReturn", "file", "member", "annotation", "modifier", "return", "jumpTarget", "controlStructure", "unknown", "type", "namespaceBlock", "methodRef", "typeRef", "fieldIdentifier", "tag", "comment", "methodInst", "typeArgument", "typeParameter", "cfgNode"]
-        self.supported_types = ["method", "typeDecl", "call", "identifier", "local", "methodParameterIn", "member", "annotation", "fieldIdentifier"]
+        self.supported_types = ["method", "typeDecl", "call", "identifier", "local", "methodParameterIn", "member", "annotation", "fieldIdentifier", "typeIdentifier"]
         self.processed_instructions = []
 
         #采用Treesitter寻找node, 并获取variable的定义
@@ -30,21 +30,14 @@ class JsContextGenerator:
     def search_context(self):
         #采用Joern进一步寻找上下文
         self.initialize_joern()
-        self.context = {
-            "method_call": {},
-            "annotation": {},
-            "variable": {},
-            "member_expression": {},
-            "type_identifier": {}
-        }
-        self.find_node_context()
-        self.NIDS = [] # New Identifier Definition Strict
-        for _, defs in self.context.items():
-            for key, value in defs.items():
-                if value and value not in ['<unknown>', 'Unresolved', '<empty>']:
-                    self.NIDS.append(key)
-        # 此方法暂时废弃
-        # self.identifiers_names, self.identifiers_definition_strict, self.identifiers = self.get_definitions_by_range(code_range[0], code_range[1])
+        _, unique_identifiers_definition_strict, _ = self.get_definitions_by_range()
+        unique_identifiers_definition_strict = list(set(unique_identifiers_definition_strict))
+        self.NIDS = unique_identifiers_definition_strict # New Identifier Definition Strict
+        #此方法暂时废弃
+        # for _, defs in self.context.items():
+        #     for key, value in defs.items():
+        #         if value and value not in ['<unknown>', 'Unresolved', '<empty>']:
+        #             self.NIDS.append(key)
 
     def initialize_joern(self):
         # Generate CPG
@@ -260,22 +253,53 @@ class JsContextGenerator:
             print(f"Error: {e}")
             return None
 
-    def get_definitions_by_range(self, line_start, line_end):
-        #根据行号来获取identifier的定义，由于joern会预解析文档改变行号，此方法暂时废弃
+    def get_definitions_by_range(self):
+        #joern对JavaScript的解析不会改变行号
         OUTPUT_FORMAT = f".toJsonPretty #> \"{self.tmp_output_path}\""
         def template(type):
             return f"cpg.{type}.where(_.file.nameExact(\"{self.rel_file_path}\")).filter({type} => {type}.lineNumber.get >= {line_start} && {type}.lineNumber.get <= {line_end}){OUTPUT_FORMAT}"
-        def get_identifier_definition(identifier_name):
-            return f"cpg.local.where(_.file.nameExact(\"{self.rel_file_path}\")).filter(local => local.name == \"{identifier_name}\").headOption{OUTPUT_FORMAT}"
+        def get_identifier_refsTo(identifier_name):
+            return f"cpg.identifier.where(_.file.nameExact(\"{self.rel_file_path}\")).filter(identifier => identifier.name == \"{identifier_name}\").refsTo.l{OUTPUT_FORMAT}"
+        def get_closureBinding_in(identifier_name, closureBindingId): #获取上一层作用域
+            return f"def typeFullName = cpg.closureBinding.closureBindingIdExact({closureBindingId}).in.headOption{OUTPUT_FORMAT}" + \
+                   f"cpg.typeDecl.filter(typeDecl => typeDecl.fullName == typeFullName).astChildren.code(\"{identifier_name}\"){OUTPUT_FORMAT}"
+        def get_identifier_local_def(identifier_name):# local不能绑定有闭包id，否则是闭包中声明的local
+            return f"cpg.local.where(_.file.nameExact(\"{self.rel_file_path}\")).nameExact(\"{identifier_name}\").filter(local => local.closureBindingId.isEmpty){OUTPUT_FORMAT}"
+        def get_identifier_assignment_def(identifier_name):
+            return f"cpg.call.where(_.file.nameExact(\"{self.rel_file_path}\")).name(\"<operator>.assignment\").filter(call => call.astChildren.cast[Identifier].code.head == \"{identifier_name}\").l{OUTPUT_FORMAT}"
+        def get_identifiers(identifier_name):
+            return f"cpg.identifier.where(_.file.nameExact(\"{self.rel_file_path}\")).filter(identifier => identifier.name == \"{identifier_name}\").l{OUTPUT_FORMAT}"
         def get_method_definition(method_full_name):
             return f"cpg.method.filter(_.fullName == \"{method_full_name}\").headOption{OUTPUT_FORMAT}"
         def get_annotation_definition(full_name):
             return f"cpg.annotation.filter(_.fullName == \"{full_name}\").headOption{OUTPUT_FORMAT}"
-        def get_file_source_code(start, end):
-            with open(f"{self.base_repo_dir}/{self.rel_file_path}", 'r') as f:
-                source_code = f.readlines()[start:end]
-            return "".join(source_code)
-        
+        def get_data_flow(identifier_name, source_line_number, sink_line_number):
+            return f"def source = cpg.identifier.where(_.file.nameExact(\"{self.rel_file_path}\")).filter(identifier => identifier.name == \"{identifier_name}\").lineNumber({source_line_number}).l;" + \
+                   f"def sink   = cpg.identifier.where(_.file.nameExact(\"{self.rel_file_path}\")).filter(identifier => identifier.name == \"{identifier_name}\").lineNumber({sink_line_number}).l;" + \
+                   f"sink.reachableByFlows(source){OUTPUT_FORMAT}"
+        def get_field_identifier_definition(field_identifier_name):
+            return f"def typeFullName = cpg.fieldIdentifier.where(_.file.nameExact(\"{self.rel_file_path}\")).filter(fieldIdentifier => fieldIdentifier.name == \"{field_identifier_name}\").astSiblings.headOption;" + \
+                   f"cpg.typeDecl.filter(typeDecl => typeDecl.fullName == typeFullName).astChildren.code(\"{field_identifier_name}\"){OUTPUT_FORMAT}"
+        def get_file_source_code(rel_path, start, end=None):
+            try:
+                #这种拼接方式保证了只有在repo路径下才能找到代码定义
+                start = start -1
+                with open(f"{self.base_repo_dir}/{rel_path}", 'r') as f:
+                    if end: source_code = f.readlines()[start:end-1+1]
+                    else: source_code = f.readlines()[start]
+                return "".join(source_code)
+            except:
+                return None
+        def get_file_source_code_by_offset(rel_path, start, end):
+            try:
+                #这种拼接方式保证了只有在repo路径下才能找到代码定义
+                with open(f"{self.base_repo_dir}/{rel_path}", 'r') as f:
+                    content = f.read()
+                return content[start:end]
+            except:
+                return None
+            
+        line_start, line_end = self.start_index, self.end_index
         identifiers = {}
         for type in self.supported_types:
             identifiers[type] = self.get_command_output(template(type))
@@ -284,46 +308,83 @@ class JsContextGenerator:
         for key, value in identifiers.items():
             if not value: continue
             for identifier in value:
-                if identifier['_label'] == 'Label': 
-                    #需要处理，TextureAtlasSprite sprite，既要有TextureAtlasSprite，又要有sprite
-                    pass
                 if identifier['_label'] == 'FIELD_IDENTIFIER': identifier['name'] = identifier['code']
-                if identifier.get('name') != 'this' and re.fullmatch(r'[a-zA-Z_][a-zA-Z0-9_]*', identifier.get('name') or ''):
-                    if identifier.get('name') == "SaSecureUtil":
-                        pass
-                    identifiers_names.append(identifier['name'])
-                    if filtered_identifiers.get(key, None):
-                        filtered_identifiers[key].append(identifier)
-                    else:
-                        filtered_identifiers[key] = [identifier]
+                if not (identifier.get('name') != 'this' and re.fullmatch(r'[a-zA-Z_][a-zA-Z0-9_]*', identifier.get('name') or '')): continue
+                if not identifier.get('name') in self.node_names: continue
+                identifiers_names.append(identifier['name'])
+                if filtered_identifiers.get(key, None):
+                    filtered_identifiers[key].append(identifier)
+                else:
+                    filtered_identifiers[key] = [identifier]
         unique_identifiers_names = list(set(identifiers_names))
 
         identifiers_definition_strict = []
         for key, value in filtered_identifiers.items():
             for identifier in value:
-                if key == "identifier": # identifier 的定义是同文件下的局部变量，定义在identifier之前，而且我们不需要考虑OriginalCode范围内的定义
-                    identifier_definition = self.get_command_output(get_identifier_definition(identifier['name']))
-                    if identifier_definition: identifier_definition = identifier_definition[0]
+                if key == "_identifier": # identifier 的定义是同文件下的局部变量，定义在identifier之前，而且我们不需要考虑OriginalCode范围内的定义
+                    # 对于js来说，导入的模块也会作为一个局部变量; 
+                    # 对于js来说，闭包中使用作用域外的定义，会在闭包中声明一个local，干扰数据流分析
+                    # 因此，此方法暂时弃用
+                    sink_line_number = identifier.get('lineNumber', None)
+                    if not sink_line_number: continue
+                    identifiers = self.get_command_output(get_identifiers(identifier['name']))
+                    #获取identifiers中lineNumber属性不超过self.start_index的最大lineNumber的identifier
+                    last_identifer = max(
+                        (id for id in identifiers if id.get('lineNumber') is not None and id["lineNumber"] < self.start_index), 
+                        key=lambda id: id.get('lineNumber', 0),
+                        default=None)
+                    if last_identifer: source_line_number = last_identifer.get('lineNumber')
                     else: continue
-                    line_number = identifier_definition.get("lineNumber", None) # line_number = 0 不是我们要考虑的场景
-                    if line_number and line_number < line_start:
-                        identifier["definition"] = get_file_source_code(line_number-1, line_number)
+                    data_flow_of_identifier = self.get_command_output(get_data_flow(identifier['name'], source_line_number, sink_line_number))
+                    if data_flow_of_identifier:
+                        identifier["definition"] = data_flow_of_identifier
+                elif key == "identifier":
+                    # 检查在OrignalCode之前是否有local定义和assignment定义
+                    assignment_defs = self.get_command_output(get_identifier_assignment_def(identifier['name']))
+                    local_defs = self.get_command_output(get_identifier_local_def(identifier['name']))
+                    identifier_definition = []
+                    for local_def in local_defs:
+                        if local_def.get("lineNumber") >= self.start_index: continue
+                        if local_def.get("offset", None) and local_def.get("offsetEnd", None):
+                            identifier_definition.append(get_file_source_code_by_offset(self.rel_file_path, local_def["offset"], local_def["offsetEnd"]))
+                        else:
+                            identifier_definition.append(get_file_source_code(self.rel_file_path, local_def["lineNumber"]))
+                    # identifier_definition_lines = sorted(list(set([
+                    #     identifier_def.get("lineNumber") for identifier_def in local_defs if identifier_def.get("lineNumber") < self.start_index
+                    # ])))
+                    # identifier_definition = [get_file_source_code(self.rel_file_path, identifier_definition_line) for identifier_definition_line in identifier_definition_lines]
+                    identifier_definition.extend([
+                        assignement_def.get("code") for assignement_def in assignment_defs if assignement_def.get("lineNumber") < self.start_index and assignement_def.get("code", None)
+                    ])
+                    identifier_definition = list(set([item for item in identifier_definition if item is not None]))
+                    if identifier_definition:
+                        identifier["definition"] = "\n".join(identifier_definition)
+                elif key == "field_identifier": # joern对于js的成员变量不会存储其typeIdentifier，需要先找到其所在的typeDecl，然后再获取其定义
+                    field_identifier_definition = self.get_command_output(get_field_identifier_definition(identifier['name']))
+                    if field_identifier_definition: 
+                        lineNumber = field_identifier_definition.get("lineNumber", None)
+                        identifier["definition"] = get_file_source_code(filename, lineNumber)
                 elif key == "call":
                     method_definition = self.get_command_output(get_method_definition(identifier['methodFullName']))
                     if method_definition: method_definition = method_definition[0]
                     else: continue
                     line_number = method_definition.get("lineNumber", None)
                     line_number_end = method_definition.get("lineNumberEnd", None)
+                    filename = method_definition.get("filename", None)
+                    if not filename: continue
                     if line_number and line_number_end:
-                        identifier["definition"] = get_file_source_code(line_number-1, line_number_end)
+                        definition_code = get_file_source_code(filename, line_number, line_number_end)
+                        if definition_code: identifier["definition"] = definition_code
                 elif key == "annotation":
                     annotation_definition = self.get_command_output(get_annotation_definition(identifier['fullName']))
                     if annotation_definition: annotation_definition = annotation_definition[0]
                     else: continue
                     line_number = annotation_definition.get("lineNumber", None)
                     line_number_end = annotation_definition.get("lineNumberEnd", None)
+                    if not filename: continue
                     if line_number and line_number_end:
-                        identifier["definition"] = get_file_source_code(line_number-1, line_number_end)
+                        definition_code = get_file_source_code(filename, line_number-1, line_number_end)
+                        if definition_code: identifier["definition"] = definition_code
                 if identifier.get("definition", None):
                     identifiers_definition_strict.append(identifier.get('name'))
         unique_identifiers_definition_strict = list(set(identifiers_definition_strict))

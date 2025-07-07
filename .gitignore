@@ -18,3 +18,5 @@ log.txt
 /test
 .gradio/certificate.pem
 ContextGenerators/Untitled-1.java
+web_for_human_evaluation/.gradio/certificate.pem
+?/.dotty_history

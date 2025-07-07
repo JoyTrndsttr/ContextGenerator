@@ -24,7 +24,8 @@ js_config = {
     "output_path": "/data/DataLACP/wangke/recorebench/js/datasets/preprocessed_datasets.json",
     "log_path": "/data/DataLACP/wangke/recorebench/js/log/log2.json",
     "base_dir": "/data/DataLACP/wangke/recorebench/repo/repo/",
-    "cache_dir": "/home/wangke/model/ContextGenerator/workspace/"
+    "cache_dir": "/home/wangke/model/ContextGenerator/workspace/",
+    "processed_ids_path": "/data/DataLACP/wangke/recorebench/js/log/processed_ids.txt"
 }
 
 config = js_config
@@ -90,6 +91,7 @@ def filter_record_by_new_identifier(record):
     new_contextGenerator.search_context()
     new_identifiers_definition_strict = new_contextGenerator.NIDS
     print(f"NIDS: {new_identifiers_definition_strict}")
+    new_contextGenerator.terminate_joern()
 
     new_added_identifiers = []
     new_added_identifiers_review_strict = []
@@ -206,6 +208,8 @@ def process_repos(records, lock):
         # record = fill_records(record)
         key = check_dataset_valid(record)
         print(f"Processed {record['_id']}: {key}")
+        with open(config["processed_ids_path"], "a") as f:
+            f.write(str(record["_id"]) + "\n")
         keys.append(key)
     flag = store_to_log_file(keys, lock)
     if not flag: print(f"Warning: Failed to store log file for {repo}")
@@ -238,6 +242,11 @@ def get_each_last_processed_id_by_repo_name():
                 repos[record["repo"]] = record["_id"]
     return repos
 
+def get_processed_ids():
+    with open(config["processed_ids_path"], "r") as f:
+        processed_ids = [line.strip() for line in f]
+    return processed_ids
+
 def get_records(one_record_id = 0, continue_flag = True, repo = ""):
     with open(config['dataset_path'], 'r') as f:
         records = [json.loads(line) for line in f]
@@ -254,6 +263,8 @@ def get_records(one_record_id = 0, continue_flag = True, repo = ""):
             #     time.sleep(3600)
             #     records = []
             # else: records = records[last_processed_id:]
+            processed_ids = [int(_id) for _id in get_processed_ids()]
+            records = [record for record in records if record["_id"] not in processed_ids]
         return records
 
 def get_random_record():
@@ -294,7 +305,7 @@ def process_records(continue_flag = True):
             for record in records:
                 repo_map[record["repo"]].append(record)
             repo_map = dict(sorted(repo_map.items(), key=lambda item: len(item[1]), reverse=True))
-            with mp.Pool(processes=10) as pool:
+            with mp.Pool(processes=8) as pool:
                 with Manager() as manager:
                     lock = manager.Lock()
                     tasks = [(records, lock) for records in repo_map.values()]

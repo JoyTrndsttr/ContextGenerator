@@ -24,7 +24,7 @@ js_config = {
     "failed_repo_dir" : "/data/DataLACP/wangke/recorebench/js/process/failed_repos_2_js.json"
 }
 
-config = js_config
+config = java_config
 source_dir = config["source_dir"]
 output_dir = config["output_dir"]
 success_repo_dir = config["success_repo_dir"]

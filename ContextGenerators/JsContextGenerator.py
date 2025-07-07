@@ -54,7 +54,7 @@ class JsContextGenerator:
         # Load CPG
         print(f"Loading CPG")
         try:
-            self.child = pexpect.spawn("joern", timeout=60)
+            self.child = pexpect.spawn("joern", timeout=120)
         except Exception as e:
             print(f"Error: {e}")
             raise ValueError("Timeout when starting joern")
@@ -63,6 +63,9 @@ class JsContextGenerator:
         self.processed_instructions.append(f'importCpg("{self.workspace_path}")')
         self.child.expect("joern>")
         print(self.child.before.decode())
+    
+    def terminate_joern(self):
+        self.child.close(force=True)
 
     def find_node_by_range(self, node):
         if not node: return None
@@ -256,6 +259,8 @@ class JsContextGenerator:
     def get_definitions_by_range(self):
         #joern对JavaScript的解析不会改变行号
         OUTPUT_FORMAT = f".toJsonPretty #> \"{self.tmp_output_path}\""
+        OUTER_SCOPE = f".repeat(_.astParent)(_.until(_.isMethod))"
+        #模板：cpg.local.where(_.file.nameExact("src/modules/Search/Search.js")).nameExact("debug").filter(local => local.closureBindingId.isEmpty).map(local => (local, cpg.local.id(local.id).repeat(_.astParent)(_.until(_.isMethod)).cast[Method].fullName.headOption)).l
         def template(type):
             return f"cpg.{type}.where(_.file.nameExact(\"{self.rel_file_path}\")).filter({type} => {type}.lineNumber.get >= {line_start} && {type}.lineNumber.get <= {line_end}){OUTPUT_FORMAT}"
         def get_identifier_refsTo(identifier_name):

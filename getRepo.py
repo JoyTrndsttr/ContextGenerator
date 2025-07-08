@@ -24,7 +24,7 @@ js_config = {
     "failed_repo_dir" : "/data/DataLACP/wangke/recorebench/js/process/failed_repos_2_js.json"
 }
 
-config = java_config
+config = js_config
 source_dir = config["source_dir"]
 output_dir = config["output_dir"]
 success_repo_dir = config["success_repo_dir"]
@@ -124,7 +124,7 @@ def process_repositories():
                 continue
 
             repo_size = get_repo_size(repo)
-            if repo_size > 512000:  # More than 400MB in KB
+            if repo_size > 614400:  # More than 400MB in KB
                 continue
         except Exception as e:
             print(f"Error getting pull request count or repo size for {repo}: {e}")

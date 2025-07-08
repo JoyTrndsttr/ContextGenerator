@@ -7,6 +7,7 @@ import traceback
 import multiprocessing as mp
 from collections import defaultdict
 import time
+from utils.Guo_2025_utils import get_samples
 
 class AgentRefiner:
     def __init__(self, config_file, record):
@@ -41,50 +42,38 @@ class AgentRefiner:
             return model_code
         
         old_without_minus, record, turn, review_info = self.old_without_minus, self.record, self.turn, self.review_info
-        # max_attempts = 3
-        max_attempts = 1
-        for i in range(max_attempts):
-            ablation_result = {"turn": turn, "ablation_info": "", "prompt_for_refinement": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
-            if prompt_type == "vallina":
-                prompt_for_refinement = model.prompt_for_refinement(old_without_minus, record["review"], review_info if with_review_line else None, self.question_for_in_file_context, self.in_file_context_summary, self.question_for_cross_file_context, self.cross_file_context_summary)
-            elif prompt_type == "self_generated":
-                data = {
-                    "comment": record["review"],
-                    "review_line": review_info["review_position_line"],
-                    "old_code": old_without_minus
-                }
-                system_prompt_for_intention, prompt_for_intention = model.get_intention(data)
-                if llm == "llama":
-                    _ , data["intention"] = model.get_model_response(prompt_for_intention, system_prompt_for_intention)
-                elif llm == "deepseek":
-                    _ , _, data["intention"] = model.get_full_deepseek_response(prompt_for_intention, system_prompt_for_intention)
-                elif llm == "deepseek_r1":
-                    _ , data["intention"] = model.get_deepseek_r1_response(prompt_for_intention, system_prompt_for_intention)
-                else: raise ValueError("Invalid llm")
-                prompt_for_refinement = model.get_selfgen_prompt(data)
-            else: raise ValueError("Invalid prompt_type")
-            #注意：由于intention一文中没有给出get_code_from_response的实现，这里只能采用原始的正则表达式截取方法
-            if llm == "llama":
-                new_code, answer = model.get_model_response(prompt_for_refinement)
-            elif llm == "deepseek":
-                new_code, think, answer = model.get_full_deepseek_response(prompt_for_refinement)
-            elif llm == "deepseek_r1":
-                new_code, answer = model.get_deepseek_r1_response(prompt_for_refinement)
-            else: raise ValueError("Invalid llm")
-            ablation_result["prompt_for_refinement"] = prompt_for_refinement.split('\n')
-            if not new_code: continue
-            if intention:
-                last_code_block = get_code_from_response(answer)
-                if last_code_block:
-                    new_code = last_code_block
-            new_code_lines = new_code.split('\n') if new_code else []
-
-            # 获取稳定的结果
-            em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(self.new, new_code)
-            if bleu + bleu_trim > ablation_result["bleu"] + ablation_result["bleu_trim"]: #取最好值
-                ablation_result["em"], ablation_result["em_trim"], ablation_result["bleu"], ablation_result["bleu_trim"] = em, em_trim, bleu, bleu_trim
-                ablation_result["new_code"] = new_code_lines
-                ablation_result["new_code_groud_truth"] = self.new.split('\n')
+        ablation_result = {"turn": turn, "ablation_info": "", "prompt_for_refinement": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
+        # 获取vallina, self_generated, rag提示词
+        if prompt_type == "vallina":
+            prompt_for_refinement = model.prompt_for_refinement(old_without_minus, record["review"], review_info if with_review_line else None, self.question_for_in_file_context, self.in_file_context_summary, self.question_for_cross_file_context, self.cross_file_context_summary)
+        elif prompt_type == "self_generated":
+            data = {
+                "comment": record["review"],
+                "review_line": review_info["review_position_line"],
+                "old_code": old_without_minus
+            }
+            system_prompt_for_intention, prompt_for_intention = model.get_intention_prompt(data)
+            _, data["intention"] = model.request(llm, prompt_for_intention, system_prompt_for_intention)
+            prompt_for_refinement = model.get_selfgen_prompt(data)
+        elif prompt_type == "rag":
+            prompt_for_refinement = model.simple_prompt_with_rag(record["review"], old_without_minus, review_info["review_position_line"], get_samples(record["review"]))
+        else: raise ValueError("Invalid prompt_type")
+        # 获取refine后的代码
+        new_code, answer = model.request(llm, prompt_for_refinement)
+        ablation_result["prompt_for_refinement"] = prompt_for_refinement.split('\n')
+        if not new_code: ablation_result
+        # if intention:
+        if True:
+            # 这里统一采用Guo2025的截取方法
+            last_code_block = get_code_from_response(answer)
+            if last_code_block:
+                new_code = last_code_block
+        new_code_lines = new_code.split('\n') if new_code else []
+        # 评估
+        em, em_trim, bleu, bleu_trim = model.calc_em_and_bleu(self.new, new_code)
+        ablation_result["em"], ablation_result["em_trim"], ablation_result["bleu"], ablation_result["bleu_trim"] = em, em_trim, bleu, bleu_trim
+        ablation_result["new_code"] = new_code_lines
+        ablation_result["new_code_groud_truth"] = self.new.split('\n')
 
         # 获取code block所在文件的源代码
         file_path = self.contextGenerator.file_path
@@ -93,10 +82,11 @@ class AgentRefiner:
                 file_content = file.readlines()
         except Exception as e:
             print(f"Error processing patch for {file_path}: {e}")
-        pre_file_content = file_content.copy()
+        pre_file_content = file_content.copy() # 备份文件内容，每次refine以及评估完恢复
         
         try:
-            diff = self.contextGenerator.code_diff
+            # 手动构造模型生成的new code的补丁并应用到源文件中，以获取Identifier_Match
+            diff = self.record["diff_hunk"]
             diff_lines = diff.split('\n')
             prefix_line = diff_lines[0]
             old_diff_lines = [line for line in diff_lines[1:] if not line.startswith('+')]
@@ -126,10 +116,10 @@ class AgentRefiner:
             with open(file_path, 'w', encoding='utf-8') as file:
                 file.writelines(file_content)
 
-            # 提取new_added_identifiers
+            # 提取new_added_identifiers, 计算Identifier_Match
             _languageContextGenerator = LanguageContextGenerator(record)
             _languageContextGenerator.code_diff = diff
-            contextGenerator = _languageContextGenerator.get_context_generator_after_applying_diff()
+            contextGenerator = _languageContextGenerator.get_context_generator("revised")
             definitions_after_patch = contextGenerator.node_list
             predict_new_identifiers = [def_aft.text.decode('utf-8') for def_aft in definitions_after_patch]
             predict_new_identifiers = list(set(predict_new_identifiers))
@@ -201,7 +191,6 @@ class AgentRefiner:
         turn, flag_for_context_change, contextGenerator, old_without_minus, record, review_info = self.turn, self.flag_for_context_change, self.contextGenerator, self.old_without_minus, self.record, self.review_info
         self.calls = [] #元组格式，（调用的函数，被调用的函数，被调用函数的实现）
         results = [] #存储每一个turn的结果
-        self.definitions = contextGenerator.getContext() #存储所有上下文定义
         record["call_name_list"] = []
         record["Evaluation_Results"] = {
             "Recall@Context": 0,
@@ -209,200 +198,70 @@ class AgentRefiner:
             "F1@Context": 0,
         }
 
-        #第一次运行：获取intention的结果
+        #第一次运行：获取Vallina的结果
         self.turn, turn = 1, 1
         results.append({"turn": 1, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
-            self.get_refinement_result(prompt_type="self_generated", intention=True),
-            self.get_refinement_result(prompt_type="self_generated", llm="deepseek", intention=True),
-            self.get_refinement_result(prompt_type="self_generated", llm="deepseek_r1", intention=True)
-            ]})
-        #第一次运行：获取Guo2024的结果
-        self.turn, turn = 2, 2
-        results.append({"turn": 2, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
-            self.get_refinement_result(with_review_line=False), 
-            self.get_refinement_result(llm="deepseek", with_review_line=False),
-            self.get_refinement_result(llm="deepseek_r1", with_review_line=False)
-            ]})
-        #第二次运行：获取Vallina的结果
-        self.turn, turn = 3, 3
-        results.append({"turn": 3, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
-            self.get_refinement_result(), 
-            self.get_refinement_result(llm="deepseek"),
+            # self.get_refinement_result(), 
+            # self.get_refinement_result(llm="deepseek"),
             self.get_refinement_result(llm="deepseek_r1")
             ]})
+        
+        #第二次运行：获取self-generated的结果
+        self.turn, turn = 2, 2
+        results.append({"turn": 2, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
+            # self.get_refinement_result(prompt_type="self_generated", intention=True),
+            # self.get_refinement_result(prompt_type="self_generated", llm="deepseek", intention=True),
+            self.get_refinement_result(prompt_type="self_generated", llm="deepseek_r1", intention=True)
+            ]})
+        
+        #第三次运行：获取RAG的结果
+        self.turn, turn = 3, 3
+        results.append({"turn": 3, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
+            # self.get_refinement_result(prompt_type="rag"),
+            # self.get_refinement_result(prompt_type="rag", llm="deepseek"),
+            self.get_refinement_result(prompt_type="rag", llm="deepseek_r1")
+            ]})
 
-        #1. Instruction 阶段
-        #判断是否需要额外的上下文信息，包括In-file context和Cross-file context
-        prompt_for_additional_context_required = model.prompt_for_additional_context_required(old_without_minus, record["review"], review_info)
-        _, think_for_additional_context_required, additional_context_required_result_json = model.get_full_deepseek_response(prompt_for_additional_context_required)
-        in_file_context_required = self.get_json_value_number(additional_context_required_result_json, "In_file_context_required")
-        question_for_in_file_context = self.get_json_value_string(additional_context_required_result_json, "Your_question_for_in_file_context")
-        cross_file_context_required = self.get_json_value_number(additional_context_required_result_json, "Cross_file_context_required")
-        question_for_cross_file_context = self.get_json_value_string(additional_context_required_result_json, "Your_question_for_cross_file_context")
-        record["additional_context_required"] = {
-            "in_file_context_required": in_file_context_required,
-            "question_for_in_file_context": question_for_in_file_context,
-            "cross_file_context_required": cross_file_context_required,
-            "question_for_cross_file_context": question_for_cross_file_context,
-            "additional_context_required_result_json": additional_context_required_result_json.split('\n'),
-            "think_for_additional_context_required": think_for_additional_context_required.split('\n'),
-            "prompt_for_additional_context_required": prompt_for_additional_context_required.split('\n')
-        }
-        if in_file_context_required == "0" and cross_file_context_required == "0":
-            results[0]["flag_for_context_change"] = "case:No additional context required"
-
+        #第四次运行：获取In-file context的结果
         #1.1 处理In-file context
         # if in_file_context_required == "1":
         if True:
             in_file_context = contextGenerator._source_code
             self.in_file_context = in_file_context
             #3.1 Summary In-file context
-            in_file_context_summary_useful = "0"
-            for i in range(3): #Validation feedback loop
-                prompt_for_in_file_context_summary = model.prompt_for_in_file_context_summary(record["review"], in_file_context, question_for_in_file_context, review_info)
-                _, think_for_in_file_context_summary, in_file_context_summary = model.get_full_deepseek_response(prompt_for_in_file_context_summary)
-                in_file_context_summary = self.get_json_value_string(in_file_context_summary, "Summary")
-                record["in_file_context_summary"] = {
-                    "in_file_context_summary": in_file_context_summary,
-                    "think_for_in_file_context_summary": think_for_in_file_context_summary.split('\n'),
-                    "prompt_for_in_file_context_summary": prompt_for_in_file_context_summary.split('\n')
-                }
-                prompt_for_evaluating_summary = model.prompt_for_evaluating_summary(old_without_minus, record["review"], question_for_in_file_context, in_file_context_summary, review_info)
-                _, think_for_evaluating_summary, evaluating_summary_result = model.get_full_deepseek_response(prompt_for_evaluating_summary)
-                question_resolved = self.get_json_value_number(evaluating_summary_result, "Question_resolved")
-                new_question = self.get_json_value_string(evaluating_summary_result, "New_question")
-                in_file_context_summary_useful = self.get_json_value_number(evaluating_summary_result, "Summary_useful")
-                record["evaluating_summary"] = {
-                    "question_resolved": question_resolved,
-                    "in_file_context_summary_useful": in_file_context_summary_useful,
-                    "new_question": new_question,
-                    "evaluating_summary_result": evaluating_summary_result.split('\n'),
-                    "think_for_evaluating_summary": think_for_evaluating_summary.split('\n'),
-                    "prompt_for_evaluating_summary": prompt_for_evaluating_summary.split('\n')
-                }
-                if in_file_context_summary_useful == "1":
-                # if question_resolved == "1":
-                    self.in_file_context_summary = in_file_context_summary
-                    self.question_for_in_file_context = question_for_in_file_context
-                    break
-                else:
-                    if new_question: question_for_in_file_context = new_question
+            prompt_for_in_file_context_summary = model.prompt_for_in_file_context_summary_without_question(record["old"], record["review"], in_file_context, review_info)
+            _, think_for_in_file_context_summary, in_file_context_summary = model.get_full_deepseek_response(prompt_for_in_file_context_summary)
+            in_file_context_summary = self.get_json_value_string(in_file_context_summary, "Summary")
+            self.in_file_context_summary = in_file_context_summary
 
-        #再运行一次refinement作为turn4的结果,此结果中已包含In-file context
-        self.turn, turn = 4, 4
-        results.append({"turn": 4, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
-            self.get_refinement_result(), 
-            self.get_refinement_result(llm="deepseek"),
-            self.get_refinement_result(llm="deepseek_r1")
-            ]})
+        # #再运行一次refinement作为turn4的结果,此结果中已包含In-file context
+        # self.turn, turn = 4, 4
+        # results.append({"turn": 4, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
+        #     self.get_refinement_result(), 
+        #     self.get_refinement_result(llm="deepseek"),
+        #     self.get_refinement_result(llm="deepseek_r1")
+        #     ]})
 
         #1.2 处理Cross-file context
         # if cross_file_context_required == "1":
         if True:
-            def action(context_name_list):
-                #1.2.2 Action 阶段 找到每个候选函数的定义
-                for context_name in context_name_list:
-                    definition_of_context_name = next((definition for definition in self.definitions if definition['name'] == context_name), None)
-                    if definition_of_context_name:
-                        self.calls.append((definition_of_context_name['caller'], context_name, definition_of_context_name['text'], "<definition_of_context_name['context']>" , "question_for_element"))
-                        continue
-                    #扩大搜索范围
-                    self.definitions = contextGenerator.search_definition(context_name)
-                    definition_of_context_name = next((definition for definition in self.definitions if definition['name'] == context_name), None)
-                    if definition_of_context_name:
-                        self.calls.append((definition_of_context_name['caller'], context_name, definition_of_context_name['text'], "<definition_of_context_name['context']>" , "question_for_element"))
-                        continue
-                    print(f"Unable to find the definition of the context name: {context_name}")
-            
-            def evaluate_context(call_name_list, new_added_identifiers):
-                recall = len(set(call_name_list) & set(new_added_identifiers)) / len(new_added_identifiers)
-                precision = len(set(call_name_list) & set(new_added_identifiers)) / len(call_name_list)
-                f1_score = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
-                return {"recall": recall, "precision": precision, "f1_score": f1_score}
+            definitions = contextGenerator.get_repo_context()
+            #3.2 Summary Cross-file context
+            prompt_for_cross_file_context_summary = model.prompt_for_cross_file_context_summary_without_question(record["old"], record["review"], definitions, review_info)
+            _, think_for_cross_file_context_summary, cross_file_context_summary = model.get_full_deepseek_response(prompt_for_cross_file_context_summary)
+            cross_file_context_summary = self.get_json_value_string(cross_file_context_summary, "Summary")
+            self.cross_file_context_summary = cross_file_context_summary
 
-            self.turn = turn = 5
-            result = {"turn": 5}
-            #1.2.1 在code block所在文件中列出10个待查找的函数名候选
-            record["names_of_relevance_context"] = []
-            prompt_for_names_of_relevance_context = model.prompt_for_names_of_relevance_context(record["review"], self.in_file_context, question_for_cross_file_context, review_info)
-            _, think_for_names_of_relevance_context, names_of_relevance_context_result_json = model.get_full_deepseek_response(prompt_for_names_of_relevance_context)
-            context_name_list = self.get_json_value_string_list(names_of_relevance_context_result_json, "Candidate Context Names")
-            purpose_for_names_of_relevance_context = self.get_json_value_string(names_of_relevance_context_result_json, "Purpose")
-            if not context_name_list: raise Exception("No candidate context names found")
-            record["names_of_relevance_context"].append({
-                "layer": 1,
-                "names_of_relevance_context" : context_name_list,
-                "evaluation_results": evaluate_context(context_name_list, self.record["new_added_identifiers"]),
-                "purpose_for_names_of_relevance_context": purpose_for_names_of_relevance_context,
-                "names_of_relevance_context_result_json": names_of_relevance_context_result_json.split('\n'),
-                "think_for_names_of_relevance_context": think_for_names_of_relevance_context.split('\n'),
-                "prompt_for_names_of_relevance_context": prompt_for_names_of_relevance_context.split('\n')
-            })
-            self.call_name_list = context_name_list
-            action(context_name_list)
-            max_attempts = 3
-            for i in range(max_attempts):
-                if not self.calls: break
-                prompt_for_deeper_names_of_relevance_context = model.prompt_for_deeper_names_of_relevance_context(record["review"], question_for_cross_file_context, self.calls, purpose_for_names_of_relevance_context)
-                _, think_for_deeper_names_of_relevance_context, deeper_names_of_relevance_context_result_json = model.get_full_deepseek_response(prompt_for_deeper_names_of_relevance_context)
-                deeper_context_name_list = self.get_json_value_string_list(deeper_names_of_relevance_context_result_json, "Candidate Context Names")
-                deeper_context_name_list = list(set(deeper_context_name_list) - set(self.call_name_list))
-                purpose_for_deeper_names_of_relevance_context = self.get_json_value_string(deeper_names_of_relevance_context_result_json, "Purpose")
-                if not deeper_context_name_list: break
-                self.call_name_list = self.call_name_list + deeper_context_name_list
-                record["names_of_relevance_context"].append({
-                    "layer": i+2,
-                    "names_of_relevance_context" : deeper_context_name_list,
-                    "evaluation_results": evaluate_context(self.call_name_list, self.record["new_added_identifiers"]),
-                    "purpose_for_deeper_names_of_relevance_context": purpose_for_deeper_names_of_relevance_context,
-                    "names_of_relevance_context_result_json": deeper_names_of_relevance_context_result_json.split('\n'),
-                    "think_for_names_of_relevance_context": think_for_deeper_names_of_relevance_context.split('\n'),
-                    "prompt_for_names_of_relevance_context": prompt_for_deeper_names_of_relevance_context.split('\n')
-                })
-                action(deeper_context_name_list)
-            record["call_name_list"] = self.call_name_list
-            #1.2.3 Summary Cross-file context
-            if self.calls:
-                for i in range(3): #Validation feedback loop
-                    prompt_for_cross_file_context_summary = model.prompt_for_cross_file_context_summary(record["review"], question_for_cross_file_context, self.calls, review_info)
-                    _, think_for_cross_file_context_summary, cross_file_context_summary = model.get_full_deepseek_response(prompt_for_cross_file_context_summary)
-                    cross_file_context_summary = self.get_json_value_string(cross_file_context_summary, "Summary")
-                    result["cross_file_context_summary"] = {
-                        "cross_file_context_summary": cross_file_context_summary,
-                        "think_for_cross_file_context_summary": think_for_cross_file_context_summary.split('\n'),
-                        "prompt_for_cross_file_context_summary": prompt_for_cross_file_context_summary.split('\n')
-                    }
-                    prompt_for_evaluating_summary = model.prompt_for_evaluating_summary(old_without_minus, record["review"], question_for_cross_file_context, cross_file_context_summary, review_info)
-                    _, think_for_evaluating_summary, evaluating_summary_result = model.get_full_deepseek_response(prompt_for_evaluating_summary)
-                    question_resolved = self.get_json_value_number(evaluating_summary_result, "Question_resolved")
-                    cross_file_context_summary_useful = self.get_json_value_number(evaluating_summary_result, "Summary_useful")
-                    new_question = self.get_json_value_string(evaluating_summary_result, "New_question")
-                    result["evaluating_summary"] = {
-                        "question_resolved": question_resolved,
-                        "cross_file_context_summary_useful": cross_file_context_summary_useful,
-                        "new_question": new_question,
-                        "evaluating_summary_result": evaluating_summary_result.split('\n'),
-                        "think_for_evaluating_summary": think_for_evaluating_summary.split('\n'),
-                        "prompt_for_evaluating_summary": prompt_for_evaluating_summary.split('\n')
-                    }
-                    if cross_file_context_summary_useful == "1":
-                    # if question_resolved == "1":
-                        self.cross_file_context_summary = cross_file_context_summary
-                        self.question_for_cross_file_context = question_for_cross_file_context
-                        break
-                    else:
-                        if new_question: question_for_cross_file_context = new_question        
-                #1.2.4：Refinement Stage
-                result["ablation_results"] = [self.get_refinement_result(), self.get_refinement_result(llm="deepseek"), self.get_refinement_result(llm="deepseek_r1")]
-                results.append(result)      
+            #这里设置一个默认问题，使得提示词默认加上repo-context
+            self.question_for_in_file_context, self.question_for_cross_file_context = "default", "default"
+            self.turn = turn = 4
+            results.append({"turn": 4, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
+                # self.get_refinement_result(), 
+                # self.get_refinement_result(llm="deepseek"), 
+                self.get_refinement_result(llm="deepseek_r1")]
+            })   
         record["definitions"], record["results"] = "omitted", results
-        #计算指标
-        call_name_list = record["call_name_list"]
-        new_added_identifiers = record["new_added_identifiers"]
-        recall = len(set(call_name_list) & set(new_added_identifiers)) / len(new_added_identifiers)
-        precision = len(set(call_name_list) & set(new_added_identifiers)) / len(call_name_list)
-        f1_score = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
-        record["Evaluation_Results"] = {"recall": recall, "precision": precision, "f1_score": f1_score}
+        
         print(f"Successfully processed record {record['_id']}")
         return record
 
@@ -431,13 +290,13 @@ def process_repo_group(config, repo, records):
 
 def main():
     config = {
-        "dataset_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_datasets/datasets_human_filtered_4.json',
-        "output_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/final_results/result2.json',
+        "dataset_path": '/data/DataLACP/wangke/recorebench/result/dataset/RecoreBench.json',
+        "output_path": '/data/DataLACP/wangke/recorebench/result/1.0/rq1_0.json',
         # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
     }
 
     print("开始等待")
-    time.sleep(2700)
+    # time.sleep(2700)
     print("开始处理数据集")
 
     # 继续处理未完成的记录
@@ -464,12 +323,12 @@ def main():
         # records = [record for record in records if record["dataset_valid_or_discard_estimation"]["Classification"] == "Valid"]
         print(f"待处理记录数: {len(records)}")
 
-    # # 测试单个记录
-    # # config["output_path"] = '/mnt/ssd2/wangke/dataset/AgentRefiner/tmp_result.json'
-    # # record = [record for record in records if record["_id"] == 6]
-    # record = [records[0]]
-    # process_repo_group(config, record[0]["repo"], record)
-    # return
+    # 测试单个记录
+    # config["output_path"] = '/mnt/ssd2/wangke/dataset/AgentRefiner/tmp_result.json'
+    # record = [record for record in records if record["_id"] == 6]
+    record = [records[900]]
+    process_repo_group(config, record[0]["repo"], record)
+    return
 
     # 按repo分组（确保同repo顺序处理）
     repo_map = defaultdict(list)

@@ -8,11 +8,13 @@ class JsContextGenerator:
         self.parser = parser
         self.tree = node
         self.source_code = source_code
+        self._source_code = source_code #用于存储原始代码
         self.start_index, self.end_index = code_range
         self.rel_file_path = file_path
         self.repo = repo_name.split('/')[1]
         self.base_repo_dir = f"/data/DataLACP/wangke/recorebench/repo/repo/{self.repo}"
         self.abs_file_path = f"{self.base_repo_dir}/{self.rel_file_path}"
+        self.file_path = self.abs_file_path
         self.workspace = f"/data/DataLACP/wangke/recorebench/workspace/{self.repo}"
         if not os.path.exists(self.workspace): os.makedirs(self.workspace)
         self.tool_path = "/home/wangke/bin/joern/joern-cli/jssrc2cpg.sh"
@@ -27,12 +29,26 @@ class JsContextGenerator:
         self.find_node_by_range(self.tree)
         self.node_names = list(set([node.text.decode() for node in self.node_list]))
 
+    def get_repo_context(self):
+        filtered_identifiers = self.search_context()
+        repo_context = []
+        for type, identifiers in filtered_identifiers.items():
+            for identifier in identifiers:
+                name = identifier.get("name", None)
+                if not name: continue
+                text = identifier.get("text", None)
+                if not text: continue
+                if name not in [context[0] for context in repo_context]:
+                    repo_context.append((name, text))
+        return repo_context
+    
     def search_context(self):
         #采用Joern进一步寻找上下文
         self.initialize_joern()
-        _, unique_identifiers_definition_strict, _ = self.get_definitions_by_range()
+        _, unique_identifiers_definition_strict, filtered_identifiers = self.get_definitions_by_range()
         unique_identifiers_definition_strict = list(set(unique_identifiers_definition_strict))
         self.NIDS = unique_identifiers_definition_strict # New Identifier Definition Strict
+        return filtered_identifiers
         #此方法暂时废弃
         # for _, defs in self.context.items():
         #     for key, value in defs.items():

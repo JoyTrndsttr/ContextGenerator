@@ -14,6 +14,18 @@ logging.basicConfig(filename='log.txt', level=logging.DEBUG,
 deepseek_model = RequestLLM()
 request_llm_by_api = RequestLLMByApi()
 
+def request(llm, prompt, system_prompt=None):
+    if llm == "deepseek":
+        new_code, think, answer = deepseek_model.request_deepseek(prompt, system_prompt)
+    elif llm == "deepseek_r1":
+        new_code, think, answer = deepseek_model.request_deepseek(prompt, system_prompt)
+        # new_code, answer = request_llm_by_api.get_deepseek_response(prompt, system_prompt)
+    elif llm == "llama":
+        new_code, answer = get_model_response(prompt, system_prompt)
+    else:
+        raise ValueError("Invalid llm")
+    return new_code, answer
+
 def prompt_for_dataset_valid_or_discard_estimation(old_code: str, review: str, new_code: str) -> str:
     prompt = "\nTask Prompt: Classify Code Review Data Sample for Dataset Quality Filtering"
 
@@ -199,6 +211,47 @@ def prompt_for_in_file_context_summary(review: str, source_code: str, question: 
 
     return prompt
 
+def prompt_for_in_file_context_summary_without_question(original_code: str, review: str, source_code: str, review_info) -> str:
+    prompt = "\nTask Prompt: You Are an Agent Summarizing In-File Context to Support Automated Code Refinement"
+
+    prompt += "\nYou are an intelligent Agent that assists an automated code review tool."
+
+    prompt += "\nThe tool received the following code block to refine:"
+    prompt += f"\n```\n{original_code}\n```"
+
+    prompt += "\nThe tool also received the following reviewer comment as guidance for how to improve that code:"
+    if not review_info or not review_info.get("review_position_line", None):
+        prompt += "The code review for this code is:\n"
+    else:
+        if review_info.get("review_hunk_start_line", None):
+            prompt += f"The reviewer commented on the code from line '{review_info['review_hunk_start_line']}' to line '{review_info['review_position_line']}':\n"
+        else:
+            prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
+    prompt += review
+
+    prompt += "\nThe tool does not have access to the full file containing this code, so it has asked you to summarize any relevant context from that file."
+
+    prompt += "\nYou have access to the **entire source file** that contains the code block. The contents of the file are:"
+    prompt += f"\n```\n{source_code}\n```"
+
+    prompt += "\n\nYour task:"
+    prompt += "\n- Analyze the full file to locate any information that may help clarify or support what change is being suggested in the review comment."
+    prompt += "\n- Focus on parts of the file that help the tool determine *how* to modify the current code block correctly based on the reviewer’s intent."
+
+    prompt += "\n\nYour analysis should focus on:"
+    prompt += "\n- **What specific change is being suggested** in the reviewer’s comment — not whether that change is necessary."
+    prompt += "\n  For example, even if the comment questions whether it’s worth deleting or refactoring a piece of code, you should assume the change will be made and focus on *how* to implement it."
+    prompt += "\n- **Whether the changes in this code block align with the reviewer’s intent** — you do not need to consider how it affects the rest of the codebase."
+
+    prompt += "\n\nOutput Format:"
+    prompt += "\n- Provide a clear and concise summary (less than 100 words) of the relevant file-level context."
+    prompt += "\n- Format your output as a JSON object:"
+    prompt += "\n```json"
+    prompt += "\n{\"Summary\": \"<your summary here>\"}"
+    prompt += "\n```"
+
+    return prompt
+
 def prompt_for_refinement(old_without_minus, review, review_info, question_for_in_file_context, in_file_context_summary, question_for_cross_file_context, cross_file_context_summary):
     prompt = ""
     prompt += "As a developer, imagine you've submitted a pull request and" \
@@ -361,6 +414,54 @@ def prompt_for_cross_file_context_summary(review: str, question: str, calls: lis
     prompt += "\n  For example, even if the comment questions whether it’s worth deleting or refactoring a piece of code, you should assume the change will be made and focus on *how* to implement it."
     prompt += "\n- **Whether the changes in this code block align with the reviewer’s intent** — you do not need to consider how it affects the rest of the codebase."
     prompt += "\n  For example, if the comment suggests renaming an element, you don’t need to check for downstream breakage — those will be handled in future commits."
+
+    prompt += "\n\nOutput Requirements:"
+    prompt += "\n- Your summary should be under 100 words."
+    prompt += "\n- Make it concise, factual, and focused on helping the tool make an accurate code change."
+    prompt += "\n- Format your response as a JSON object like this:"
+    prompt += "\n```json"
+    prompt += "\n{\"Summary\": \"<your summary here>\"}"
+    prompt += "\n```"
+
+    return prompt
+
+def prompt_for_cross_file_context_summary_without_question(original_code: str, review: str, definitions: list, review_info) -> str:
+    prompt = "\nTask Prompt: Summarize Cross-File Context to Help an Automated Tool Refine Code"
+
+    prompt += "\nYou are an intelligent Agent assisting an automated code review tool with code refinement."
+    prompt += "\nThe tool received the following code block:"
+    prompt += f"\n```\n{original_code}\n```"
+
+    prompt += "\nThe tool received the following reviewer comment as input:"
+    if not review_info or not review_info.get("review_position_line", None):
+        prompt += "The code review for this code is:\n"
+    else:
+        if review_info.get("review_hunk_start_line", None):
+            prompt += f"The reviewer commented on the code from line '{review_info['review_hunk_start_line']}' to line '{review_info['review_position_line']}':\n"
+        else:
+            prompt += f"The reviewer commented on the line '{review_info['review_position_line']}':\n"
+    prompt += review
+
+    prompt += "\nThe tool is refining a specific code block based on this review, but it does **not** have access to the full code repository."
+
+    prompt += "\nYou have access to the full code repository and have retrieved relevant definitions of functions, classes, or variables that may help clarify the intent."
+
+    if len(definitions) > 0:
+        prompt += "\n\nHere are the relevant definitions you found:"
+        for i, (name, definition_text) in enumerate(definitions):
+            prompt += f"\nDefinition {i}: `{name}`"
+            definition_text_lines = definition_text.split('\n')
+            if len(definition_text_lines) > 100:
+                definition_text = "\n".join(definition_text_lines[:100]) + "\n #The rest of the definition is too long to display."
+            prompt += f"\nImplementation:\n```\n{definition_text}\n```"
+
+    prompt += "\n\nYour task:"
+    prompt += "\nBased on your findings and the reviewer’s comment, provide a concise summary of the most relevant cross-file context information that may assist in refining the code."
+
+    prompt += "\nYour analysis should focus on:"
+    prompt += "\n- **What specific change is being suggested** in the reviewer’s comment — not whether that change is necessary."
+    prompt += "\n  For example, even if the comment questions whether it’s worth deleting or refactoring a piece of code, you should assume the change will be made and focus on *how* to implement it."
+    prompt += "\n- **Whether the changes in this code block align with the reviewer’s intent** — you do not need to consider how it affects the rest of the codebase."
 
     prompt += "\n\nOutput Requirements:"
     prompt += "\n- Your summary should be under 100 words."
@@ -564,7 +665,7 @@ def prompt_for_deeper_names_of_relevance_context(review: str, question: str, cal
 
     return prompt
 
-def get_intention(data):
+def get_intention_prompt(data):
     system_prompt = "You will be presented with a code review comment and a code snippet. "
     system_prompt += "Your task is to understand the reviewer's intention of the modification without explaining the reason. "
     system_prompt += "Choose one of the following templates to describe the reviewer's intention. "
@@ -615,4 +716,54 @@ def get_selfgen_prompt(data):
     prompt += "Please solve the problem step by step.\n"
     return prompt
 
-    
+def simple_prompt(comment, old_code, review_line):
+    prompt = "During a code review, the reviewer asked the developer to revise this piece of code, the original code is as follows:\n"
+    prompt += "```\n{}```\n".format(old_code)
+    prompt += "The reviewer gave the following comment:\n"
+    prompt += "{}\n".format(comment)
+    prompt += "The review comment is related to the following code line:\n"
+    prompt += "{}\n".format(review_line)
+    prompt += "Revise the original code according to the review comment.\n"
+    return prompt
+
+def simple_prompt_with_in_file_context(comment, old_code, review_line, in_file_context):
+    prompt = "During a code review, the reviewer asked the developer to revise this piece of code, the original code is as follows:\n"
+    prompt += "```\n{}```\n".format(old_code)
+    prompt += "The reviewer gave the following comment:\n"
+    prompt += "{}\n".format(comment)
+    prompt += "The review comment is related to the following code line:\n"
+    prompt += "{}\n".format(review_line)
+    prompt += "Revise the original code according to the review comment.\n"
+    return prompt
+
+def simple_prompt_with_cross_file_context(comment, old_code, review_line, cross_file_context):
+    prompt = "During a code review, the reviewer asked the developer to revise this piece of code, the original code is as follows:\n"
+    prompt += "```\n{}```\n".format(old_code)
+    prompt += "The reviewer gave the following comment:\n"
+    prompt += "{}\n".format(comment)
+    prompt += "The review comment is related to the following code line:\n"
+    prompt += "{}\n".format(review_line)
+    prompt += "Revise the original code according to the review comment.\n"
+    return prompt
+
+def simple_prompt_with_rag(comment, old_code, review_line, example_datas):
+    # 这是一些code review的例子，请参考这些例子，然后完成code review
+    prompt = "Here are some examples of code reviews, please refer to these examples and then complete the code review.\n"
+    for example_data in example_datas:
+        example_comment = example_data["comment"]
+        example_old_code = example_data["old_code"]
+        example_review_line = example_data["review_line"]
+        example_new_code = example_data["new_code"]
+        prompt += "<Origianl Code>:\n```\n{}\n```\n".format(example_old_code)
+        prompt += "<Review Comment>:\n{}\n".format(example_comment)
+        prompt += "<Comment Related Line>:\n{}\n".format(example_review_line)
+        prompt += "<Revised Code>:\n```\n{}\n```\n".format(example_new_code)
+    prompt += "During a code review, the reviewer asked the developer to revise this piece of code, the original code is as follows:\n"
+    prompt += "```\n{}\n```\n".format(old_code)
+    prompt += "The reviewer gave the following comment:\n"
+    prompt += "{}\n".format(comment)
+    prompt += "The review comment is related to the following code line:\n"
+    prompt += "{}\n".format(review_line)
+    prompt += "Revise the original code according to the review comment.\n"
+    prompt += "Let's think step by step.\n"
+    return prompt

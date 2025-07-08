@@ -8,11 +8,13 @@ class JavaContextGenerator:
         self.parser = parser
         self.tree = node
         self.source_code = source_code
+        self._source_code = source_code #用于存储原始代码
         self.start_index, self.end_index = code_range
         self.rel_file_path = file_path
         self.repo = repo_name.split('/')[1]
         self.base_repo_dir = f"/data/DataLACP/wangke/recorebench/repo/repo/{self.repo}"
         self.abs_file_path = f"{self.base_repo_dir}/{self.rel_file_path}"
+        self.file_path = self.abs_file_path
         self.workspace = f"/data/DataLACP/wangke/recorebench/workspace/{self.repo}"
         if not os.path.exists(self.workspace): os.makedirs(self.workspace)
         self.tool_path = "/home/wangke/bin/joern/joern-cli/javasrc2cpg"
@@ -21,12 +23,16 @@ class JavaContextGenerator:
         self.all_types = ["method", "typeDecl", "block", "call", "identifier", "local", "methodParameterIn", "methodParameterOut", "methodReturn", "file", "member", "annotation", "modifier", "return", "jumpTarget", "controlStructure", "unknown", "type", "namespaceBlock", "methodRef", "typeRef", "fieldIdentifier", "tag", "comment", "methodInst", "typeArgument", "typeParameter", "cfgNode"]
         self.supported_types = ["method", "typeDecl", "call", "identifier", "local", "methodParameterIn", "member", "annotation", "fieldIdentifier"]
         self.processed_instructions = []
+        self.repo_context = []
 
         #采用Treesitter寻找node, 并获取variable的定义
         self.node_list = []
         self.find_node_by_range(self.tree)
         self.node_names = list(set([node.text.decode() for node in self.node_list]))
 
+    def get_repo_context(self):
+        return self.search_context()
+    
     def search_context(self):
         #采用Joern进一步寻找上下文
         self.initialize_joern()
@@ -38,14 +44,17 @@ class JavaContextGenerator:
             "type_identifier": {}
         }
         self.find_node_context()
+        self.repo_context = []
         self.NIDS = [] # New Identifier Definition Strict
         for _, defs in self.context.items():
             for key, value in defs.items():
                 if value and value not in ['<unknown>', 'Unresolved', '<empty>']:
                     self.NIDS.append(key)
+                    self.repo_context.append((key, value))
         # 此方法暂时废弃
         # self.identifiers_names, self.identifiers_definition_strict, self.identifiers = self.get_definitions_by_range(code_range[0], code_range[1])
-
+        return self.repo_context
+    
     def initialize_joern(self):
         # Generate CPG
         print(f"Generating CPG")
@@ -104,7 +113,7 @@ class JavaContextGenerator:
             for line_number, line in enumerate(source_code):
                 if line_number + 1 in lines:
                     identifier_context.append(f"line {line_number + 1}: {line}")
-        return identifier_context
+        return '\n'.join(identifier_context)
 
     def get_source_code_and_processed_code(self):
         # 获取文件处理前和处理后代码，仅做调试用
@@ -143,7 +152,8 @@ class JavaContextGenerator:
             method_full_name = callee_node.get("methodFullName", "Unresolved")
             if method_full_name == "Unresolved": return None
             definition = self.get_command_output(get_method_code(method_full_name))
-            if definition: return definition[0].get("filename", None)
+            if definition: 
+                return definition[0].get("code", None)
             return None
         elif type == "field_access":
             field_access_text = representation
@@ -153,7 +163,8 @@ class JavaContextGenerator:
             type_full_name = field_access_info.get("typeFullName", "Unresolved")
             if type_full_name == "Unresolved": return None
             definition = self.get_command_output(get_type_decl_info(type_full_name))
-            if definition: return definition[0].get("filename", None)
+            if definition: 
+                return definition[0].get("code", None)
             return None
         elif type == "type_identifier":
             type_name = representation
@@ -162,7 +173,8 @@ class JavaContextGenerator:
             type_full_name = locals[0].get("typeFullName", "Unresolved")
             if type_full_name == "Unresolved": return None
             definition = self.get_command_output(get_type_decl_info(type_full_name))
-            if definition: return definition[0].get("filename", None)
+            if definition: 
+                return definition[0].get("code", None)
             return None
         elif type == "annotation":
             annotation_name = representation
@@ -172,7 +184,8 @@ class JavaContextGenerator:
             full_name = annotation_info.get("fullName", "Unresolved")
             if full_name == "Unresolved": return None
             definition = self.get_command_output(get_type_decl_info(full_name))
-            if definition: return definition[0].get("filename", None)
+            if definition:
+                return definition[0].get("code", None)
             return None
         else:
             print(f"Warning: Unconsidered type {type}")

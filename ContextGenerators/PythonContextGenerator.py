@@ -3,32 +3,24 @@ import jedi
 import json
 
 class PythonContextGenerator:
-    def __init__(self, parser, node, source_code, file_path, code_diff, repo_name, code_range):
-        self.repo_path = "/mnt/ssd2/wangke/CR_data/repo/repo_name"
+    def __init__(self, parser, node, source_code, file_path, repo_name, code_range):
         self.parser = parser
         self.tree = node
         self.source_code = source_code
         self._source_code = source_code #用于存储原始代码
-        self.file_path = file_path
-        self.code_diff = code_diff
-        self.repo_name = repo_name
-        self.start_index, self.end_index = code_range
-        self.context = {}
-        # self.precise_context = {}
+        self.rel_file_path = file_path
+        self.repo = repo_name.split('/')[1]
+        self.base_repo_dir = f"/data/DataLACP/wangke/recorebench/repo/repo/{self.repo}"
+        self.file_path = f"{self.base_repo_dir}/{self.rel_file_path}"
 
-        #根据code_diff和code_range找到old在source_code中从哪一行开始到哪一行结束
-        code_diff_lines = self.code_diff.split('\n')
-        for i in reversed(range(0,self.start_index+1)):
-            code_diff_prefix = code_diff_lines[i]  ##sample '@@ -274,6 +274,7 @@ def get(self):'
-            if code_diff_prefix.startswith('@@'): break
-        start = int(re.search(r'(\d+)', code_diff_prefix).group(1))
-        end = start + (self.end_index - self.start_index)
-        self.start_index, self.end_index = start-1, end-1
+        self.repo_name = repo_name
+        self.context = {}
+        self.start_index, self.end_index = code_range
         
         #找到old最近的上层定义
         source_code_lines = self.source_code.split('\n')
         super_function = "default_function"
-        line = start
+        line = self.start_index - 1
         while line > 0 and (source_code_lines[line].startswith(' ') or source_code_lines[line].startswith('')):
             if source_code_lines[line].strip().startswith('def '):
                 super_function = source_code_lines[line].split('def ')[1].split('(')[0]
@@ -50,13 +42,17 @@ class PythonContextGenerator:
         self.file_paths.append(self.file_path)
         self.context = self.getContext()
 
+    def get_repo_context(self):
+        return [(definition['name'], definition['text']) for definition in self.context]
+    
     def find_node_by_range(self, node):
+        # tree node所存储的行的起始位置为0，而start和end记录的起始位置为1，同Github的Commit页面一致
         if not node: return None
         for child in node.children:
-            if child.start_point[0] > self.end_index or child.end_point[0] < self.start_index:
+            if child.start_point[0] + 1 > self.end_index or child.end_point[0] + 1 < self.start_index:
                 continue
             if len(child.children) == 0:
-                if self.start_index <= child.start_point[0] <= self.end_index:
+                if self.start_index <= child.start_point[0] + 1 <= self.end_index:
                     if child.type in ["identifier"]:
                         self.node_list.append(child)
             else:
@@ -80,7 +76,7 @@ class PythonContextGenerator:
                 for i in range(start, end):
                     text.append(file_source_code[i])
         except FileNotFoundError:
-            print(f"FileNotFoundError: {definition.module_path_str}")
+            print(f"FileNotFoundError: {definition.module_path._str}")
             return None, None, None
         return '\n'.join(text), start, end
 

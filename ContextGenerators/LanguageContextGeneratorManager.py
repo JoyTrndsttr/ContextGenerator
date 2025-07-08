@@ -60,8 +60,8 @@ class LanguageContextGenerator:
         language = self.language
         if language == '.py':
             self.parser = self.language_parsers[self.file_extension]
-            self.tree, self.source_code = self.parse_file(self.file_path, self.parser)
-            return PythonContextGenerator(self.parser, self.tree.root_node, self.source_code, self.file_path, self.code_diff, self.repo_name, (1, start - end))
+            self.tree, self.source_code = self.parse_file(self.abs_file_path, self.parser)
+            return PythonContextGenerator(self.parser, self.tree.root_node, self.source_code, self.file_path, self.repo_name, (start, end))
         elif language == '.java':
             self.parser = self.language_parsers[self.file_extension]
             self.tree, self.source_code = self.parse_file(self.abs_file_path, self.parser)

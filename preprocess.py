@@ -247,16 +247,16 @@ def get_processed_ids():
         processed_ids = [line.strip() for line in f]
     return processed_ids
 
-def get_records(one_record_id = 0, continue_flag = True, repo = ""):
-    with open(config['dataset_path'], 'r') as f:
+def get_records(file_path=config['dataset_path'], one_record_id = 0, continue_flag = True, repo = ""):
+    with open(file_path, 'r') as f:
         records = [json.loads(line) for line in f]
         if one_record_id:
             records = [record for record in records if record["_id"] == one_record_id]
             if repo:
                 records = [record for record in records if record["repo"] == repo]
         elif continue_flag:
-            repos_last_id = get_each_last_processed_id_by_repo_name()
-            records = [record for record in records if record["repo"] not in repos_last_id or record["_id"] > repos_last_id[record["repo"]]]
+            # repos_last_id = get_each_last_processed_id_by_repo_name()
+            # records = [record for record in records if record["repo"] not in repos_last_id or record["_id"] > repos_last_id[record["repo"]]]
             # last_processed_id = get_last_processed_id()
             # if last_processed_id >= len(records):
             #     print(f"All records have been processed")
@@ -267,8 +267,8 @@ def get_records(one_record_id = 0, continue_flag = True, repo = ""):
             records = [record for record in records if record["_id"] not in processed_ids]
         return records
 
-def get_random_record():
-    with open(config['dataset_path'], 'r') as f:
+def get_random_record(file_path=config['dataset_path']):
+    with open(file_path, 'r') as f:
         records = [json.loads(line) for line in f]
         return [random.choice(records)]
 

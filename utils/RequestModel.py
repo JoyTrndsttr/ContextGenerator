@@ -1,4 +1,5 @@
 from openai import OpenAI
+import re
 
 class OpenAIUtils:
     def __init__(self, model_id):
@@ -29,3 +30,19 @@ class OpenAIUtils:
                 **self._generation_kwargs
             )
         return response.choices[0].message.content
+
+def get_model_response(model, user_prompt, system_prompt = None):
+    answer = model.get_completion(user_prompt, system_prompt if system_prompt else None)
+    result = re.search(r'```(.*)```', answer,re.DOTALL)
+    print(f"prompt:\n{user_prompt}\nanswer:\n{answer}")
+    if result:
+        newcode = result.group(1)
+    return newcode if result else "", answer
+
+def main():
+    model_id = "llama:7b"
+    user_prompt = "What is the weather today?"
+    print(get_model_response(OpenAIUtils(model_id), user_prompt))
+
+if __name__ == '__main__':
+    main()

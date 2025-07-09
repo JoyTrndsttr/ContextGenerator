@@ -767,3 +767,28 @@ def simple_prompt_with_rag(comment, old_code, review_line, example_datas):
     prompt += "Revise the original code according to the review comment.\n"
     prompt += "Let's think step by step.\n"
     return prompt
+
+def simple_prompt_with_in_file_context(comment, old_code, review_line, in_file_context):
+    prompt = "During a code review, the reviewer asked the developer to revise this piece of code, the original code is as follows:\n"
+    prompt += "```\n{}```\n".format(old_code)
+    prompt += "The reviewer gave the following comment:\n"
+    prompt += "{}\n".format(comment)
+    prompt += "The review comment is related to the following code line:\n"
+    prompt += "{}\n".format(review_line)
+    prompt += "\n\nBased on the review, you check the source code and find that:"
+    prompt += f"\n{in_file_context}"
+    prompt += "Revise the original code according to the review comment.\n"
+    return prompt
+
+def simple_prompt_with_cross_file_context(comment, old_code, review_line, in_file_context, cross_file_context):
+    prompt = "During a code review, the reviewer asked the developer to revise this piece of code, the original code is as follows:\n"
+    prompt += "```\n{}```\n".format(old_code)
+    prompt += "The reviewer gave the following comment:\n"
+    prompt += "{}\n".format(comment)
+    prompt += "The review comment is related to the following code line:\n"
+    prompt += "{}\n".format(review_line)
+    prompt += "\n\nBased on the review, you check the source code and find that:"
+    prompt += f"\n{in_file_context}"
+    prompt += f"\n{cross_file_context}"
+    prompt += "Revise the original code according to the review comment.\n"
+    return prompt

@@ -8,11 +8,13 @@ import multiprocessing as mp
 from collections import defaultdict
 import time
 from utils.Guo_2025_utils import get_samples
+import random
 
 class AgentRefiner:
     def __init__(self, config_file, record):
         self.dataset_path = config_file['dataset_path']
         self.output_path = config_file['output_path']
+        self.log_path = config_file['log_path']
         self.record = CLBPP(record)
         self.id = record['_id']
         print(f'processing: {self.id}')
@@ -45,7 +47,8 @@ class AgentRefiner:
         ablation_result = {"turn": turn, "ablation_info": "", "prompt_for_refinement": "", "em": 0, "em_trim": 0, "bleu": 0, "bleu_trim": 0}
         # 获取vallina, self_generated, rag提示词
         if prompt_type == "vallina":
-            prompt_for_refinement = model.prompt_for_refinement(old_without_minus, record["review"], review_info if with_review_line else None, self.question_for_in_file_context, self.in_file_context_summary, self.question_for_cross_file_context, self.cross_file_context_summary)
+            # prompt_for_refinement = model.prompt_for_refinement(old_without_minus, record["review"], review_info if with_review_line else None, self.question_for_in_file_context, self.in_file_context_summary, self.question_for_cross_file_context, self.cross_file_context_summary)
+            prompt_for_refinement = model.simple_prompt(record["review"], old_without_minus, review_info["review_position_line"])
         elif prompt_type == "self_generated":
             data = {
                 "comment": record["review"],
@@ -57,6 +60,10 @@ class AgentRefiner:
             prompt_for_refinement = model.get_selfgen_prompt(data)
         elif prompt_type == "rag":
             prompt_for_refinement = model.simple_prompt_with_rag(record["review"], old_without_minus, review_info["review_position_line"], get_samples(record["review"]))
+        elif prompt_type == "in-file-context":
+            prompt_for_refinement = model.simple_prompt_with_in_file_context(record["review"], old_without_minus, review_info["review_position_line"], self.in_file_context_summary)
+        elif prompt_type == "cross-file-context":
+            prompt_for_refinement = model.simple_prompt_with_cross_file_context(record["review"], old_without_minus, review_info["review_position_line"], self.in_file_context_summary, self.cross_file_context_summary)
         else: raise ValueError("Invalid prompt_type")
         # 获取refine后的代码
         new_code, answer = model.request(llm, prompt_for_refinement)
@@ -186,6 +193,10 @@ class AgentRefiner:
         except:
             return []
 
+    def log_processed_record(self, id):
+        with open(self.log_path, 'a', encoding='utf-8') as file:
+            file.write(f"{id}\n")
+    
     def process(self):
         # ReAct框架
         turn, flag_for_context_change, contextGenerator, old_without_minus, record, review_info = self.turn, self.flag_for_context_change, self.contextGenerator, self.old_without_minus, self.record, self.review_info
@@ -201,7 +212,7 @@ class AgentRefiner:
         #第一次运行：获取Vallina的结果
         self.turn, turn = 1, 1
         results.append({"turn": 1, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
-            # self.get_refinement_result(), 
+            self.get_refinement_result(), 
             # self.get_refinement_result(llm="deepseek"),
             self.get_refinement_result(llm="deepseek_r1")
             ]})
@@ -209,7 +220,7 @@ class AgentRefiner:
         #第二次运行：获取self-generated的结果
         self.turn, turn = 2, 2
         results.append({"turn": 2, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
-            # self.get_refinement_result(prompt_type="self_generated", intention=True),
+            self.get_refinement_result(prompt_type="self_generated", intention=True),
             # self.get_refinement_result(prompt_type="self_generated", llm="deepseek", intention=True),
             self.get_refinement_result(prompt_type="self_generated", llm="deepseek_r1", intention=True)
             ]})
@@ -217,7 +228,7 @@ class AgentRefiner:
         #第三次运行：获取RAG的结果
         self.turn, turn = 3, 3
         results.append({"turn": 3, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
-            # self.get_refinement_result(prompt_type="rag"),
+            self.get_refinement_result(prompt_type="rag"),
             # self.get_refinement_result(prompt_type="rag", llm="deepseek"),
             self.get_refinement_result(prompt_type="rag", llm="deepseek_r1")
             ]})
@@ -252,17 +263,16 @@ class AgentRefiner:
             cross_file_context_summary = self.get_json_value_string(cross_file_context_summary, "Summary")
             self.cross_file_context_summary = cross_file_context_summary
 
-            #这里设置一个默认问题，使得提示词默认加上repo-context
-            self.question_for_in_file_context, self.question_for_cross_file_context = "default", "default"
             self.turn = turn = 4
             results.append({"turn": 4, "result_json": "", "prompt_for_instruction": [], "flag_for_context_change": "",  "ablation_results": [
-                # self.get_refinement_result(), 
+                self.get_refinement_result(prompt_type="cross-file-context"), 
                 # self.get_refinement_result(llm="deepseek"), 
-                self.get_refinement_result(llm="deepseek_r1")]
+                self.get_refinement_result(prompt_type="cross-file-context", llm="deepseek_r1")]
             })   
         record["definitions"], record["results"] = "omitted", results
         
         print(f"Successfully processed record {record['_id']}")
+        self.log_processed_record(record["_id"])
         return record
 
 def process_repo_group(config, repo, records):
@@ -293,6 +303,7 @@ def main():
         "dataset_path": '/data/DataLACP/wangke/recorebench/result/dataset/RecoreBench.json',
         "output_path": '/data/DataLACP/wangke/recorebench/result/1.0/rq1_0.json',
         # "record_path": '/mnt/ssd2/wangke/dataset/AgentRefiner/_tmp_result.json',
+        "log_path": '/data/DataLACP/wangke/recorebench/result/1.0/log.txt'
     }
 
     print("开始等待")
@@ -301,9 +312,8 @@ def main():
 
     # 继续处理未完成的记录
     try:
-        with open(config["output_path"], "r", encoding="utf-8") as f0:
-            _records = [json.loads(line) for line in f0]
-            ids = [record["_id"] for record in _records]
+        with open(config["log_path"], "r", encoding="utf-8") as f:
+            ids = [line.strip() for line in f]
     except FileNotFoundError:
         _records = []
         ids = []
@@ -314,10 +324,12 @@ def main():
     # 读取数据集
     with open(config["dataset_path"], "r", encoding="utf-8") as f:
         records = [json.loads(line) for line in f]
+        #随机打乱顺序
+        random.shuffle(records)
         # records = json.load(f)
         # records = [record for record in records if record["repo"] not in occupied_repos]
         # records = records[:10]
-        # records = [record for record in records if record["_id"] not in ids]
+        records = [record for record in records if record["_id"] not in ids]
         # records = records[:3000]
         # fileterd by model
         # records = [record for record in records if record["dataset_valid_or_discard_estimation"]["Classification"] == "Valid"]
@@ -326,9 +338,9 @@ def main():
     # 测试单个记录
     # config["output_path"] = '/mnt/ssd2/wangke/dataset/AgentRefiner/tmp_result.json'
     # record = [record for record in records if record["_id"] == 6]
-    record = [records[900]]
-    process_repo_group(config, record[0]["repo"], record)
-    return
+    # record = [records[900]]
+    # process_repo_group(config, record[0]["repo"], record)
+    # return
 
     # 按repo分组（确保同repo顺序处理）
     repo_map = defaultdict(list)

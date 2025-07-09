@@ -35,6 +35,31 @@ class RequestLLMByApi:
         # return output, think
         return text
     
+    def get_gpt_4o_response(self, prompt, system_prompt = None):
+        token = json.load(open("/home/wangke/model/ContextGenerator/settings.json", encoding='utf-8'))["gpt-4o"]
+        client = OpenAI(api_key=token, base_url="https://api.chatanywhere.tech")
+        if not system_prompt:
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "user", "content": prompt},
+                ],
+                stream=False,
+                **self.config
+            )
+        else:
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                stream=False,
+                **self.config
+            )
+        text = response.choices[0].message.content
+        return text
+    
     def prompt_for_estimate_dataset(self, code_diff, review, review_line, NIDS):
         prompt = "假如你是一个评估员，你需要判断一条代码评审任务的数据是否合格。\n"
         prompt += f"在这个任务中，评审员在{review_line}这一行评论了：{review}\n"
@@ -47,9 +72,13 @@ class RequestLLMByApi:
         return prompt
 
 if __name__ == "__main__":
+    # prompt = "What is the capital of France?"
+    # request_llm = RequestLLMByApi()
+    # output, think = request_llm.get_deepseek_response(prompt)
+    # print(output)
+    # print(think)
     prompt = "What is the capital of France?"
     request_llm = RequestLLMByApi()
-    output, think = request_llm.get_deepseek_response(prompt)
+    output = request_llm.get_gpt_4o_response(prompt)
     print(output)
-    print(think)
     pass

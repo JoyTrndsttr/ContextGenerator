@@ -124,7 +124,7 @@ def process_repositories():
                 continue
 
             repo_size = get_repo_size(repo)
-            if repo_size > 614400:  # More than 400MB in KB
+            if repo_size > 614400:  # More than 600MB in KB
                 continue
         except Exception as e:
             print(f"Error getting pull request count or repo size for {repo}: {e}")

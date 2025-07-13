@@ -15,13 +15,15 @@ deepseek_model = RequestLLM()
 request_llm_by_api = RequestLLMByApi()
 
 def request(llm, prompt, system_prompt=None):
+    new_code = ""
     if llm == "deepseek":
         new_code, think, answer = deepseek_model.request_deepseek(prompt, system_prompt)
     elif llm == "deepseek_r1":
-        new_code, think, answer = deepseek_model.request_deepseek(prompt, system_prompt)
-        # new_code, answer = request_llm_by_api.get_deepseek_response(prompt, system_prompt)
+        answer = request_llm_by_api.get_deepseek_response(prompt, system_prompt)
     elif llm == "llama":
         new_code, answer = get_model_response(prompt, system_prompt)
+    elif llm == "gpt-4o":
+        answer = request_llm_by_api.get_gpt_4o_response(prompt, system_prompt)
     else:
         raise ValueError("Invalid llm")
     return new_code, answer

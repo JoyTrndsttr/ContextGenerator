@@ -23,14 +23,24 @@ python_classification_config = {
     "output_file": "/data/DataLACP/wangke/recorebench/python/datasets/datasets_human_classified.json"
 }
 
+python_config = {
+    "data_file": "/data/DataLACP/wangke/recorebench/python/datasets/cleaned_datasets_with_analysis.json",
+    "output_file": "/data/DataLACP/wangke/recorebench/python/datasets/datasets_human_filtered.json"
+}
+
 js_config = {
     "data_file": "/data/DataLACP/wangke/recorebench/js/datasets/cleaned_datasets_with_analysis.json",
     "output_file": "/data/DataLACP/wangke/recorebench/js/datasets/datasets_human_filtered.json"
 }
 
-config = js_config
+all_classification_config = {
+    "data_file": "/data/DataLACP/wangke/recorebench/result/3.0/rq12.json",
+    "output_file": "/data/DataLACP/wangke/recorebench/result/3.0/rq12_classified.json"
+}
 
+config = js_config
 # config = java_config
+
 data_file = config.get("data_file")
 output_file = config.get("output_file")
 
@@ -55,7 +65,8 @@ if os.path.exists(output_file):
 
 # 根据 last_passed_id 筛选出待审查记录
 try:
-    index = all_records.index(next((r for r in all_records if r.get("_id", 0) == last_passed_id), {})) + 1
+    # index = all_records.index(next((r for r in all_records if r.get("_id", 0) == last_passed_id), {})) + 1
+    index = 0
 except:
     index = 0
 records_to_review = all_records[index:]

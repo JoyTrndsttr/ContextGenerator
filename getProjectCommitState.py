@@ -127,6 +127,43 @@ def get_comment_info(record):
         return None, review_url
 
 # 检查CR/CRN数据
+def check_CR_all():
+    def check_CR_data(record):
+        revision_commit_hash = record["ids"][2]
+        repo = record["repo"]
+        pull_id = record["ghid"]
+        original_commit_info = get_commit_info(repo, revision_commit_hash)
+        hunk = record["hunk"]
+        hunk_lines = hunk.split('\n')
+        hunk_lines = hunk_lines[1:]
+        hunk = '\n'.join(hunk_lines)
+        files = original_commit_info['files']
+        for file in files:
+            if file["patch"].find(hunk) != -1:
+                return True
+        return False
+    
+    config = {
+        "dataset": "/data/DataLACP/wangke/recorebench/others/ref-test.jsonl",
+        "log_file": "/data/DataLACP/wangke/recorebench/others/log.txt"
+    }
+
+    with open(config["dataset"], "r") as f, open(config["log_file"], "a") as log:
+        records = [json.loads(line) for line in f]
+        for record in records:
+            try:
+                flag = check_CR_data(record)
+                if flag:
+                    log.write("True\n")
+                    print("True")
+                else:
+                    log.write("False\n")
+                    print("False")
+            except Exception as e:
+                log.write(f"Error\n")
+                print(f"Error: {e}")
+
+# 检查CR/CRN数据
 def check_CR_CRN_data(record):
     def normalize_text(text):
         text = re.sub(r'\W+','', text)
@@ -363,9 +400,28 @@ def fill_record(record):
     except FileNotFoundError:
         print(f"Error, file {file_path} not found")
     
+def get_umergered_pulls(repo):
+    i = 0
+    while True:
+        pulls = requestGitHub.get_response(f"https://api.github.com/repos/{repo}/pulls?state=all&page={i+1}").json()
+        if not pulls: break
+        try:
+            for pull in pulls:
+                if not pull.get('merge_commit_sha', None) and pull.get('state', None) == 'closed':
+                    # print(pull.get("url"))
+                    # print(pull.get("review_comments_url"))
+                    reviews = requestGitHub.get_response(pull.get("review_comments_url")).json()
+                    if reviews:
+                        print(pull.get("review_comments_url"))
+        except Exception as e: 
+            print(e)
+            continue
+        i += 1
 
 # 主函数
 def main(id):
+    # check_CR_all()
+    get_umergered_pulls("spotify/luigi")
     pass
     
 if __name__ == "__main__":

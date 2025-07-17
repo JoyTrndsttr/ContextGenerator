@@ -5,11 +5,11 @@ import traceback
 config = {
     # "dataset_path": "/data/DataLACP/wangke/recorebench/result/3.0/rq12.json",
     # "dataset_path": "/data/DataLACP/wangke/recorebench/result/2.0/rq2_0.json",
-    "dataset_path": "/data/DataLACP/wangke/recorebench/result/5.0/rq12_ordered.json",
+    # "dataset_path": "/data/DataLACP/wangke/recorebench/result/5.0/rq12_ordered.json",
     # "dataset_path": "/data/DataLACP/wangke/recorebench/result/5.0/rq12_general.json",
     # "dataset_path": "/data/DataLACP/wangke/recorebench/result/5.0/rq12_web.json",
     # "dataset_path": "/data/DataLACP/wangke/recorebench/result/5.0/rq12_history.json",
-    # "dataset_path": "/data/DataLACP/wangke/recorebench/result/5.0/rq12_py.json",
+    "dataset_path": "/data/DataLACP/wangke/recorebench/result/5.0/rq12_py.json",
     # "dataset_path": "/data/DataLACP/wangke/recorebench/result/5.0/rq12_java.json",
     # "dataset_path": "/data/DataLACP/wangke/recorebench/result/5.0/rq12_js.json",
     
@@ -82,6 +82,7 @@ def print_results(evaluation_results, llms, metrics, records_len):
                 evaluation_results[metric][i][j] /= records_len
 
     for ablation_index, llm in enumerate(llms):
+        metrics = ["simple_prompt", "simple_prompt_with_in_file_context", "simple_prompt_with_cross_file_context"]#只打印这三个指标
         print(f"\n评估的大模型：{llm}\nIdentifier Match")
         for metric in metrics:
             print(format_line(metric, "Identifier Match", evaluation_results[metric], ablation_index))
@@ -92,9 +93,9 @@ def print_results(evaluation_results, llms, metrics, records_len):
             added_vals = evaluation_results[metric][offset:offset + 3] + evaluation_results[metric][6:]
             print(format_line(metric, "Added Identifier Match", added_vals, ablation_index))
 
-        print("EM and BLEU")
-        for metric in metrics:
-            print(format_bleu_line(metric, "EM and BLEU", evaluation_results[metric], ablation_index))
+        # print("EM and BLEU")
+        # for metric in metrics:
+        #     print(format_bleu_line(metric, "EM and BLEU", evaluation_results[metric], ablation_index))
 
 # 主逻辑
 with open(config["dataset_path"], "r") as f:

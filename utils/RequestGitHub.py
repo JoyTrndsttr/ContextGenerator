@@ -69,7 +69,8 @@ class RequestGitHub:
                         if e.response.status_code == 403: continue
                     except:
                         pass
-                    else: 
+                    else:
+                        if e.response.status_code == 404: raise Exception(f"{e.response.status_code}") 
                         traceback.print_exc()
                         # raise Exception(f"{e.response.status_code}")
             time.sleep(600)
